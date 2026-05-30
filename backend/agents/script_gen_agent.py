@@ -47,7 +47,7 @@ REQUIREMENTS:
 
 Return ONLY the complete k6 JavaScript code, no explanation, no markdown fences."""
 
-        script = await call_gemini(prompt, temperature=0.2)
+        script = await call_gemini(prompt, temperature=0.2, task_type="fast")
         # Clean up markdown fences if present
         script = script.replace("```javascript", "").replace("```js", "").replace("```", "").strip()
 
@@ -59,7 +59,7 @@ ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users, {load_params.get('steady_state_duration_sec', 300)}s duration
 
 Return ONLY valid JMX XML, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2)
+        script = await call_gemini(prompt, temperature=0.2, task_type="fast")
         script = script.replace("```xml", "").replace("```", "").strip()
 
     elif tool == "gatling":
@@ -70,7 +70,7 @@ ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users, {load_params.get('steady_state_duration_sec', 300)}s duration
 
 Return ONLY valid Scala code, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2)
+        script = await call_gemini(prompt, temperature=0.2, task_type="fast")
         script = script.replace("```scala", "").replace("```", "").strip()
 
     elif tool == "locust":
@@ -81,7 +81,7 @@ ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users
 
 Return ONLY valid Python code, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2)
+        script = await call_gemini(prompt, temperature=0.2, task_type="fast")
         script = script.replace("```python", "").replace("```", "").strip()
 
     else:

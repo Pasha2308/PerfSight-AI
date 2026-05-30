@@ -189,5 +189,5 @@ def _generate_infra_metrics(
         "network_mbps": round(load_factor * 80 + random.gauss(0, 5), 1),
         "db_connections": int(load_factor * 45 + random.gauss(0, 3)),
         "db_cpu_pct": round(min(99, base_cpu * 0.8 + random.gauss(0, 4)), 1),
-        "gc_pause_ms": round(random.exponential(5) if scenario_type == "soak" and progress > 0.5 else random.exponential(2), 1),
+        "gc_pause_ms": round(random.expovariate(1 / 5) if scenario_type == "soak" and progress > 0.5 else random.expovariate(1 / 2), 1),
     }

@@ -1,17 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { sendChat, retest } from '../api';
-import { Send, Bot, RefreshCw, MessageSquare, Sparkles } from 'lucide-react';
+import { Send, Bot, RefreshCw, X, MessageSquare, Download, Copy, Check } from 'lucide-react';
 
-export const QAPanel: React.FC = () => {
-  const { runId, chatMessages, suggestedQuestions, isChatLoading, addChatMessage, setSuggestedQuestions, setChatLoading, report } = useStore();
+export const ChatDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const {
+    runId, chatMessages, suggestedQuestions, isChatLoading,
+    addChatMessage, setSuggestedQuestions, setChatLoading, report,
+  } = useStore();
   const [input, setInput] = useState('');
   const [retesting, setRetesting] = useState(false);
+  const [copied, setCopied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const sendMessage = async (msg?: string) => {
     const text = msg || input.trim();
@@ -19,7 +28,6 @@ export const QAPanel: React.FC = () => {
     setInput('');
     addChatMessage({ role: 'user', content: text });
     setChatLoading(true);
-
     try {
       const result = await sendChat(runId, text);
       addChatMessage({
@@ -32,7 +40,7 @@ export const QAPanel: React.FC = () => {
       });
       if (result.suggested_questions) setSuggestedQuestions(result.suggested_questions);
     } catch {
-      addChatMessage({ role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' });
+      addChatMessage({ role: 'assistant', content: 'An error occurred. Please try again.' });
     } finally {
       setChatLoading(false);
     }
@@ -45,7 +53,7 @@ export const QAPanel: React.FC = () => {
       const result = await retest(runId, scenarioType);
       addChatMessage({
         role: 'assistant',
-        content: `🔄 Retest initiated! New run ID: \`${result.run_id}\`. Redirecting you to the new test...`,
+        content: `Retest initiated. New run ID: ${result.run_id}. Redirecting...`,
       });
       setTimeout(() => window.location.reload(), 2000);
     } catch {
@@ -55,26 +63,26 @@ export const QAPanel: React.FC = () => {
     }
   };
 
-  const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant');
-  const retestSuggestion = lastAssistantMsg?.retest_suggestion;
+  const handleCopyReport = async () => {
+    if (!report) return;
+    const text = [
+      report.executive_summary,
+      '\n\nTechnical RCA:',
+      report.technical_rca,
+      '\n\nRemediation:',
+      report.remediation_steps,
+    ].join('\n');
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    addChatMessage({ role: 'assistant', content: 'Report copied to clipboard.' });
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-  const handleExport = async (format: string) => {
-    const reportData = report;
-    if (!reportData) return;
-    if (format === 'copy') {
-      const text = [
-        reportData.executive_summary,
-        '\n\nTechnical RCA:',
-        reportData.technical_rca,
-        '\n\nRemediation:',
-        reportData.remediation_steps,
-      ].join('\n');
-      navigator.clipboard.writeText(text);
-      addChatMessage({ role: 'assistant', content: '✅ Report copied to clipboard!' });
-    } else if (format === 'junit') {
-      const verdict = reportData.verdict || {};
-      const kpis = reportData.kpis || {};
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  const handleDownloadJunit = () => {
+    if (!report) return;
+    const verdict = report.verdict || {};
+    const kpis = report.kpis || {};
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
   <testsuite name="PerfSight Performance Test" tests="1" failures="${verdict.status === 'FAIL' ? 1 : 0}">
     <testcase name="Performance SLA Check" time="${(kpis.p99_ms || 0) / 1000}">
@@ -82,61 +90,122 @@ export const QAPanel: React.FC = () => {
     </testcase>
   </testsuite>
 </testsuites>`;
-      const blob = new Blob([xml], { type: 'application/xml' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'perfsight-results.xml'; a.click();
-      addChatMessage({ role: 'assistant', content: '✅ JUnit XML downloaded!' });
-    }
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'perfsight-results.xml';
+    a.click();
+    addChatMessage({ role: 'assistant', content: 'JUnit XML downloaded.' });
   };
 
+  const lastAssistantMsg = [...chatMessages].reverse().find(m => m.role === 'assistant');
+  const retestSuggestion = lastAssistantMsg?.retest_suggestion;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 500 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #7c3aed, #2563eb)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Bot size={18} color="white" />
+    <div className="chat-drawer">
+      {/* Drawer Header */}
+      <div style={{
+        padding: '14px 16px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: 10,
+        flexShrink: 0,
+      }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: 'linear-gradient(135deg, var(--feuji-red), var(--feuji-amber))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <Bot size={16} color="white" />
         </div>
-        <div>
-          <h3 style={{ fontSize: 15, fontWeight: 600 }}>QA Agent — Human Review</h3>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Ask questions, request refinements, or trigger a retest</p>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600 }}>AI Assistant</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ask about your test results</div>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <div className="live-dot" style={{ background: 'var(--accent-purple)' }} />
-          <span style={{ fontSize: 12, color: 'var(--accent-purple)' }}>READY</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="live-dot" style={{ background: 'var(--accent-green)' }} />
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', padding: 4, borderRadius: 5,
+              display: 'flex', alignItems: 'center',
+              transition: 'color 0.18s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
+          >
+            <X size={15} />
+          </button>
         </div>
       </div>
 
-      {/* Welcome message if no chat */}
+      {/* Export Actions */}
+      {report && (
+        <div style={{
+          padding: '10px 14px', borderBottom: '1px solid var(--border)',
+          display: 'flex', gap: 6, flexShrink: 0,
+        }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleCopyReport}
+            style={{ flex: 1, justifyContent: 'center', fontSize: 11.5 }}
+          >
+            {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy Report</>}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleDownloadJunit}
+            style={{ flex: 1, justifyContent: 'center', fontSize: 11.5 }}
+          >
+            <Download size={12} /> JUnit XML
+          </button>
+        </div>
+      )}
+
+      {/* Welcome State */}
       {chatMessages.length === 0 && (
-        <div className="card animate-fade-in" style={{ background: 'rgba(124,58,237,0.08)', borderColor: 'rgba(124,58,237,0.3)', marginBottom: 12 }}>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <Sparkles size={18} color="var(--accent-purple)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <p style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 500, marginBottom: 6 }}>
-                The report is ready for your review. 🎉
-              </p>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                I can answer questions about the findings, explain any anomaly in detail, suggest what to fix first, 
-                or recommend a retest with different parameters. What would you like to explore?
-              </p>
+        <div style={{ padding: '14px 16px', flexShrink: 0 }}>
+          <div className="card" style={{
+            background: 'rgba(224,64,30,0.05)', borderColor: 'rgba(224,64,30,0.2)',
+          }}>
+            <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+              <MessageSquare size={15} color="var(--feuji-red)" style={{ flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
+                  Report is ready for review.
+                </p>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  Ask about findings, root causes, remediation steps, or request a retest with different parameters.
+                </p>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Suggested questions */}
+      {/* Suggested Questions */}
       {suggestedQuestions.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Suggested Questions</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {suggestedQuestions.map((q, i) => (
+        <div style={{ padding: '10px 14px 0', flexShrink: 0 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
+            Suggested Questions
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {suggestedQuestions.slice(0, 4).map((q, i) => (
               <button key={i} onClick={() => sendMessage(q)} disabled={isChatLoading}
                 style={{
-                  padding: '6px 12px', borderRadius: 20, fontSize: 12, cursor: 'pointer',
+                  padding: '6px 10px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
                   background: 'var(--bg-card-hover)', border: '1px solid var(--border)',
-                  color: 'var(--text-secondary)', fontFamily: 'inherit', transition: 'all 0.2s',
+                  color: 'var(--text-secondary)', fontFamily: 'inherit',
+                  transition: 'all 0.15s', textAlign: 'left',
                 }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = 'var(--accent-purple)'; (e.target as HTMLElement).style.color = 'var(--accent-purple)'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}>
+                onMouseEnter={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--feuji-red)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--feuji-red)';
+                }}
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                  (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+                }}>
                 {q}
               </button>
             ))}
@@ -144,53 +213,46 @@ export const QAPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Chat messages */}
-      <div className="scroll-y" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 4, minHeight: 200, maxHeight: 420 }}>
+      {/* Messages */}
+      <div className="scroll-y" style={{
+        flex: 1, display: 'flex', flexDirection: 'column', gap: 10,
+        padding: '12px 14px', overflowY: 'auto',
+      }}>
         {chatMessages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
             {msg.role === 'assistant' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Bot size={12} color="var(--accent-purple)" />
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>PerfSight AI</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                <Bot size={11} color="var(--feuji-red)" />
+                <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>PerfSight AI</span>
                 {msg.intent && msg.intent !== 'GENERAL' && (
-                  <span className={`intent-badge ${msg.intent?.toLowerCase()}`}>
-                    {msg.intent === 'RETEST' ? '🔄' : msg.intent === 'REFORMAT' ? '✏️' : msg.intent === 'EXPORT' ? '📤' : msg.intent === 'RECOMMEND' ? '💡' : '🔍'} {msg.intent}
-                  </span>
+                  <span className={`intent-badge ${msg.intent?.toLowerCase()}`}>{msg.intent}</span>
                 )}
               </div>
             )}
-            <div className={`chat-bubble ${msg.role}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+            <div className={`chat-bubble ${msg.role}`} style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, maxWidth: '95%' }}>
               {msg.content}
             </div>
-            {/* Retest suggestion card */}
+
+            {/* Retest Suggestion */}
             {msg.role === 'assistant' && msg.retest_suggestion?.recommended && (
-              <div className="card animate-fade-in" style={{ marginTop: 8, maxWidth: '85%', borderColor: 'rgba(88,166,255,0.3)', background: 'var(--glow-blue)', padding: '12px 16px' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--accent-blue)' }}>
-                  🔄 Retest Configured
+              <div className="card animate-fade-in" style={{
+                marginTop: 7, width: '95%',
+                borderColor: 'rgba(224,64,30,0.3)', background: 'rgba(224,64,30,0.05)', padding: '10px 14px',
+              }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8, color: 'var(--feuji-red)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <RefreshCw size={13} /> Retest Suggestion
                 </div>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 10, fontSize: 13 }}>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>TYPE</span><br /><strong>{msg.retest_suggestion.suggested_params?.scenario_type}</strong></div>
-                  <div><span style={{ color: 'var(--text-muted)', fontSize: 11 }}>USERS</span><br /><strong style={{ color: 'var(--accent-blue)' }}>{msg.retest_suggestion.suggested_params?.peak_vus}</strong></div>
+                <div style={{ display: 'flex', gap: 10, fontSize: 12, marginBottom: 10 }}>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: 10 }}>TYPE</span><br /><strong>{msg.retest_suggestion.suggested_params?.scenario_type}</strong></div>
+                  <div><span style={{ color: 'var(--text-muted)', fontSize: 10 }}>USERS</span><br /><strong style={{ color: 'var(--feuji-red)' }}>{msg.retest_suggestion.suggested_params?.peak_vus}</strong></div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <button className="btn btn-primary btn-sm" disabled={retesting}
                     onClick={() => handleRetest(msg.retest_suggestion.suggested_params?.scenario_type)}>
-                    {retesting ? <><div className="spinner" style={{ width: 14, height: 14 }} /> Starting...</> : <><RefreshCw size={14} /> Run Retest</>}
+                    {retesting ? <><div className="spinner" style={{ width: 12, height: 12 }} /> Starting...</> : <><RefreshCw size={12} /> Run Retest</>}
                   </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleRetest('stress')}>Try Stress Test</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleRetest('soak')}>Try Soak Test</button>
-                </div>
-              </div>
-            )}
-            {/* Export action card */}
-            {msg.role === 'assistant' && (msg as any).action === 'export' && (
-              <div className="card animate-fade-in" style={{ marginTop: 8, maxWidth: '85%', borderColor: 'rgba(124,58,237,0.3)', background: 'rgba(124,58,237,0.05)', padding: '12px 16px' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--accent-purple)' }}>
-                  📤 Export Report
-                </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleExport('copy')}>📋 Copy to Clipboard</button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => handleExport('junit')}>⚙️ Download JUnit XML</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => handleRetest('stress')}>Stress Test</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => handleRetest('soak')}>Soak Test</button>
                 </div>
               </div>
             )}
@@ -198,13 +260,17 @@ export const QAPanel: React.FC = () => {
         ))}
 
         {isChatLoading && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <Bot size={14} color="var(--accent-purple)" />
-            <div className="chat-bubble assistant" style={{ padding: '10px 14px' }}>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-purple)', animation: 'blink 1s infinite 0s' }} />
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-purple)', animation: 'blink 1s infinite 0.2s' }} />
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-purple)', animation: 'blink 1s infinite 0.4s' }} />
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+            <Bot size={13} color="var(--feuji-red)" />
+            <div className="chat-bubble assistant" style={{ padding: '9px 14px' }}>
+              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                {[0, 0.2, 0.4].map((d, i) => (
+                  <div key={i} style={{
+                    width: 5, height: 5, borderRadius: '50%',
+                    background: 'var(--feuji-red)',
+                    animation: `blink 1s infinite ${d}s`,
+                  }} />
+                ))}
               </div>
             </div>
           </div>
@@ -213,23 +279,34 @@ export const QAPanel: React.FC = () => {
       </div>
 
       {/* Input */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <input
-          className="input"
-          placeholder="Ask anything, e.g. 'Why was checkout slow?' or 'Redo with 2000 users' or 'Give me an executive summary'..."
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          disabled={isChatLoading}
-        />
-        <button className="btn btn-primary" onClick={() => sendMessage()} disabled={isChatLoading || !input.trim()}
-          style={{ flexShrink: 0, padding: '10px 16px' }}>
-          <Send size={16} />
-        </button>
+      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 7 }}>
+          <input
+            ref={inputRef}
+            className="input"
+            placeholder="Ask about results, root causes, or request a retest..."
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+            disabled={isChatLoading}
+            style={{ fontSize: 13 }}
+          />
+          <button
+            className="btn btn-primary"
+            onClick={() => sendMessage()}
+            disabled={isChatLoading || !input.trim()}
+            style={{ flexShrink: 0, padding: '9px 14px' }}
+          >
+            <Send size={14} />
+          </button>
+        </div>
+        <p style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
+          Ask questions · Request retest · Export results
+        </p>
       </div>
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, textAlign: 'center' }}>
-        Ask questions · Request retest · Reformat report · Export results
-      </p>
     </div>
   );
 };
+
+// Keep backward-compatible named export
+export const QAPanel = ChatDrawer;

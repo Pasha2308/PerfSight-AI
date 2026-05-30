@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { useStore } from '../store';
-import { Activity, Users, AlertTriangle, Zap } from 'lucide-react';
+import { Activity, Users, AlertTriangle, Zap, MapPin, Server } from 'lucide-react';
 
 export const LiveMonitor: React.FC = () => {
   const { liveMetrics, liveInfra, liveVUs, liveProgress, phases } = useStore();
@@ -53,29 +53,30 @@ export const LiveMonitor: React.FC = () => {
     backgroundColor: 'transparent',
     grid: { top: 30, right: 20, bottom: 40, left: 60, containLabel: false },
     tooltip: {
-      trigger: 'axis', backgroundColor: '#1a2332', borderColor: '#2d4a6e', textStyle: { color: '#e6edf3', fontSize: 12 },
+      trigger: 'axis', backgroundColor: '#FFFFFF', borderColor: '#E5E7EB',
+      textStyle: { color: '#111827', fontSize: 11.5 },
       formatter: (params: any) => params.map((p: any) => `${p.seriesName}: <b>${p.value}ms</b>`).join('<br/>'),
     },
-    legend: { top: 5, textStyle: { color: '#8b949e', fontSize: 11 }, data: ['p99', 'p95', 'p50'] },
-    xAxis: { type: 'category', data: chartData.times, axisLine: { lineStyle: { color: '#1e2d3d' } }, axisLabel: { color: '#484f58', fontSize: 10 }, splitLine: { show: false } },
-    yAxis: { type: 'value', axisLine: { show: false }, axisLabel: { color: '#484f58', fontSize: 10, formatter: (v: number) => `${v}ms` }, splitLine: { lineStyle: { color: '#1e2d3d', type: 'dashed' } } },
+    legend: { top: 5, textStyle: { color: '#4B5563', fontSize: 11 }, data: ['p99', 'p95', 'p50'] },
+    xAxis: { type: 'category', data: chartData.times, axisLine: { lineStyle: { color: '#E5E7EB' } }, axisLabel: { color: '#9CA3AF', fontSize: 10 }, splitLine: { show: false } },
+    yAxis: { type: 'value', axisLine: { show: false }, axisLabel: { color: '#9CA3AF', fontSize: 10, formatter: (v: number) => `${v}ms` }, splitLine: { lineStyle: { color: '#F3F4F6', type: 'dashed' } } },
     series: [
-      { name: 'p99', type: 'line', data: chartData.p99, smooth: true, symbol: 'none', lineStyle: { color: '#f85149', width: 2 }, areaStyle: { color: 'rgba(248,81,73,0.08)' } },
-      { name: 'p95', type: 'line', data: chartData.p95, smooth: true, symbol: 'none', lineStyle: { color: '#d29922', width: 1.5 }, areaStyle: { color: 'rgba(210,153,34,0.05)' } },
-      { name: 'p50', type: 'line', data: chartData.p50, smooth: true, symbol: 'none', lineStyle: { color: '#3fb950', width: 1.5 }, areaStyle: { color: 'rgba(63,185,80,0.05)' } },
+      { name: 'p99', type: 'line', data: chartData.p99, smooth: true, symbol: 'none', lineStyle: { color: '#E0401E', width: 2 }, areaStyle: { color: 'rgba(224,64,30,0.08)' } },
+      { name: 'p95', type: 'line', data: chartData.p95, smooth: true, symbol: 'none', lineStyle: { color: '#F28D1D', width: 1.5 }, areaStyle: { color: 'rgba(242,141,29,0.05)' } },
+      { name: 'p50', type: 'line', data: chartData.p50, smooth: true, symbol: 'none', lineStyle: { color: '#16a34a', width: 1.5 }, areaStyle: { color: 'rgba(22,163,74,0.05)' } },
     ],
   };
 
   const vuOpts = {
     backgroundColor: 'transparent',
     grid: { top: 10, right: 10, bottom: 30, left: 50 },
-    tooltip: { trigger: 'axis', backgroundColor: '#1a2332', borderColor: '#2d4a6e', textStyle: { color: '#e6edf3', fontSize: 12 } },
-    xAxis: { type: 'category', data: chartData.times, axisLabel: { color: '#484f58', fontSize: 9 }, axisLine: { lineStyle: { color: '#1e2d3d' } }, splitLine: { show: false } },
-    yAxis: { type: 'value', axisLabel: { color: '#484f58', fontSize: 9 }, splitLine: { lineStyle: { color: '#1e2d3d', type: 'dashed' } }, axisLine: { show: false } },
+    tooltip: { trigger: 'axis', backgroundColor: '#FFFFFF', borderColor: '#E5E7EB', textStyle: { color: '#111827', fontSize: 11.5 } },
+    xAxis: { type: 'category', data: chartData.times, axisLabel: { color: '#9CA3AF', fontSize: 9 }, axisLine: { lineStyle: { color: '#E5E7EB' } }, splitLine: { show: false } },
+    yAxis: { type: 'value', axisLabel: { color: '#9CA3AF', fontSize: 9 }, splitLine: { lineStyle: { color: '#F3F4F6', type: 'dashed' } }, axisLine: { show: false } },
     series: [{
       name: 'Virtual Users', type: 'area', data: chartData.vus, smooth: true, symbol: 'none',
-      lineStyle: { color: '#58a6ff', width: 2 }, areaStyle: { color: 'rgba(88,166,255,0.15)' },
-      itemStyle: { color: '#58a6ff' },
+      lineStyle: { color: '#E0401E', width: 2 }, areaStyle: { color: 'rgba(224,64,30,0.08)' },
+      itemStyle: { color: '#E0401E' },
     }],
   };
 
@@ -86,10 +87,10 @@ export const LiveMonitor: React.FC = () => {
       {/* Live stats row */}
       <div className="grid-4">
         {[
-          { label: 'Virtual Users', value: liveVUs, icon: <Users size={16} />, color: 'var(--accent-blue)', unit: '' },
-          { label: 'p99 Latency', value: currentP99, icon: <Activity size={16} />, color: currentP99 > 500 ? 'var(--accent-red)' : 'var(--accent-green)', unit: 'ms' },
-          { label: 'Error Rate', value: currentErrors, icon: <AlertTriangle size={16} />, color: currentErrors > 1 ? 'var(--accent-red)' : 'var(--accent-green)', unit: '%' },
-          { label: 'Progress', value: liveProgress, icon: <Zap size={16} />, color: 'var(--accent-purple)', unit: '%' },
+          { label: 'Virtual Users', value: liveVUs, icon: <Users size={16} />, color: 'var(--feuji-red)', unit: '' },
+          { label: 'p99 Latency', value: currentP99, icon: <Activity size={16} />, color: currentP99 > 500 ? 'var(--feuji-red)' : 'var(--accent-green)', unit: 'ms' },
+          { label: 'Error Rate', value: currentErrors, icon: <AlertTriangle size={16} />, color: currentErrors > 1 ? 'var(--feuji-red)' : 'var(--accent-green)', unit: '%' },
+          { label: 'Progress', value: liveProgress, icon: <Zap size={16} />, color: 'var(--feuji-amber)', unit: '%' },
         ].map(stat => (
           <div key={stat.label} className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -153,6 +154,42 @@ export const LiveMonitor: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Distributed Cloud Nodes Simulation */}
+      {isExecuting && (
+        <div className="card animate-fade-in" style={{ marginTop: 8 }}>
+          <h3 style={{ fontSize: 14, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Server size={16} color="var(--feuji-red)" /> Distributed Cloud Load Generators
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            {[
+              { region: 'us-east-1 (N. Virginia)', status: 'Active', vus: Math.floor(liveVUs * 0.4) },
+              { region: 'eu-west-1 (Ireland)', status: 'Active', vus: Math.floor(liveVUs * 0.35) },
+              { region: 'ap-northeast-1 (Tokyo)', status: 'Active', vus: Math.floor(liveVUs * 0.25) },
+            ].map(node => (
+              <div key={node.region} style={{
+                background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 8, padding: 12,
+                display: 'flex', flexDirection: 'column', gap: 8
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <MapPin size={12} color="var(--text-muted)" /> {node.region}
+                  </span>
+                  <span style={{ fontSize: 10, background: 'var(--glow-green)', color: 'var(--accent-green)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>
+                    {node.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Generating <strong style={{ color: 'var(--text-primary)' }}>{node.vus}</strong> VUs
+                </div>
+                <div className="progress-bar" style={{ height: 4 }}>
+                  <div className="progress-fill" style={{ width: `${(node.vus / (liveVUs || 1)) * 100}%`, background: 'var(--feuji-red)' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

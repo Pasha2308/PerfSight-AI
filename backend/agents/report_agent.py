@@ -29,7 +29,7 @@ Write a concise executive summary (3-4 sentences) that:
 
 Write in plain English, no technical jargon. Return ONLY the summary text."""
 
-    exec_summary = await call_gemini(exec_prompt, temperature=0.4)
+    exec_summary = await call_gemini(exec_prompt, temperature=0.4, task_type="reasoning")
 
     # --- Technical RCA ---
     tech_prompt = f"""You are a senior performance engineer writing a technical root cause analysis.
@@ -45,7 +45,7 @@ Write a technical RCA that includes:
 
 Use specific numbers from the findings. Be precise. Return ONLY the analysis text, using clear paragraphs."""
 
-    tech_rca = await call_gemini(tech_prompt, temperature=0.3)
+    tech_rca = await call_gemini(tech_prompt, temperature=0.3, task_type="reasoning")
 
     # --- Remediation Steps ---
     remed_prompt = f"""You are a performance engineering expert providing actionable remediation guidance.
@@ -62,7 +62,7 @@ For each root cause identified, provide:
 Format as a numbered list with clear headers. Be specific — name actual config files, parameters, and values.
 Return ONLY the remediation steps."""
 
-    remediation = await call_gemini(remed_prompt, temperature=0.3)
+    remediation = await call_gemini(remed_prompt, temperature=0.3, task_type="reasoning")
 
     # --- Key Observations ---
     obs_prompt = f"""Based on this performance test data, list 5 key observations as bullet points.
@@ -70,7 +70,7 @@ Each observation should be a single, specific, data-backed insight.
 FINDINGS: {findings_str}
 Return ONLY the 5 bullet points, starting each with a relevant emoji."""
 
-    observations = await call_gemini(obs_prompt, temperature=0.4)
+    observations = await call_gemini(obs_prompt, temperature=0.4, task_type="fast")
 
     return {
         "executive_summary": exec_summary,

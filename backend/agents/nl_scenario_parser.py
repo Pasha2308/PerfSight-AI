@@ -202,7 +202,7 @@ Extract these entities and return ONLY valid JSON:
   "user_journey_description": "<2-3 sentence description of what users will do step by step>"
 }}"""
 
-    raw = await call_gemini(extraction_prompt, temperature=0.1)
+    raw = await call_gemini(extraction_prompt, temperature=0.1, task_type="fast")
 
     # Parse extracted entities
     extracted = {}
@@ -274,7 +274,7 @@ Return ONLY valid JSON with this structure:
   "user_journey": "Step-by-step description of user behavior during this scenario"
 }}"""
 
-    endpoint_raw = await call_gemini(endpoint_prompt, temperature=0.2)
+    endpoint_raw = await call_gemini(endpoint_prompt, temperature=0.2, task_type="reasoning")
     endpoint_data = {}
     try:
         es = endpoint_raw.find("{")

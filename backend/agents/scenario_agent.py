@@ -1,5 +1,5 @@
 import json
-from .gemini_client import call_gemini
+from .gemini_client import call_gemini, call_gemini_json
 from typing import Dict, Any
 
 SCENARIO_TYPES = {
@@ -73,7 +73,7 @@ Return ONLY valid JSON with this exact structure:
   "risk_areas": ["e.g. Database under high concurrency", "Session management at scale"]
 }}"""
 
-    raw = await call_gemini(prompt, temperature=0.3)
+    raw = await call_gemini(prompt, temperature=0.3, task_type="reasoning")
 
     # Extract JSON from response
     try:

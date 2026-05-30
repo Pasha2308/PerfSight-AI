@@ -66,12 +66,12 @@ interface AppState {
 }
 
 const PHASES_INIT: Record<string, PipelinePhase> = {
-  scenario:  { name: 'scenario',  label: '🔍 Scenario Design',     status: 'pending' },
-  scripting: { name: 'scripting', label: '✍️ Script Generation',   status: 'pending' },
-  executing: { name: 'executing', label: '🚀 Test Execution',       status: 'pending' },
-  analyzing: { name: 'analyzing', label: '🧠 AI Analysis',          status: 'pending' },
-  reporting: { name: 'reporting', label: '📝 Report Generation',    status: 'pending' },
-  qa_ready:  { name: 'qa_ready',  label: '💬 QA Agent Ready',       status: 'pending' },
+  scenario:  { name: 'scenario',  label: 'Scenario Analysis',   status: 'pending' },
+  scripting: { name: 'scripting', label: 'Script Generation',   status: 'pending' },
+  executing: { name: 'executing', label: 'Test Execution',       status: 'pending' },
+  analyzing: { name: 'analyzing', label: 'AI Analysis',          status: 'pending' },
+  reporting: { name: 'reporting', label: 'Report Generation',    status: 'pending' },
+  qa_ready:  { name: 'qa_ready',  label: 'AI Assistant Ready',   status: 'pending' },
 };
 
 export const useStore = create<AppState>((set, get) => ({

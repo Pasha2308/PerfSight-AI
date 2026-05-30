@@ -16,9 +16,8 @@ class CorrelationEngine:
         app_df = pd.DataFrame(app_metrics)
         infra_df = pd.DataFrame(infra_metrics)
 
-        app_df["timestamp"] = pd.to_numeric(app_df["timestamp"], errors="coerce")
-        app_df["response_time"] = pd.to_numeric(app_df["response_time"], errors="coerce")
-        infra_df["timestamp"] = pd.to_numeric(infra_df["timestamp"], errors="coerce")
+        app_df["timestamp"] = pd.to_datetime(app_df["timestamp"], unit="ms")
+        infra_df["timestamp"] = pd.to_datetime(infra_df["timestamp"], unit="ms")
 
         # Resample to 10-second buckets
         app_resampled = (

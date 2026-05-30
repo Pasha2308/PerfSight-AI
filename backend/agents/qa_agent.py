@@ -152,7 +152,7 @@ KPIs: {json.dumps(report.get('kpis', {}))}
 
 Reformat this information as requested. Keep all facts accurate. Return only the reformatted content."""
 
-    return await call_gemini(prompt, temperature=0.4)
+    return await call_gemini(prompt, temperature=0.4, task_type="fast")
 
 
 async def _handle_timepoint(message: str, report: Dict, scenario: Dict) -> str:
@@ -176,7 +176,7 @@ Explain specifically what happened at the moment/timepoint the user is asking ab
 Reference the test phase (ramp-up, steady state, or spike moment) and what the metrics showed.
 Be specific with numbers. Keep it under 200 words."""
 
-    return await call_gemini(prompt, temperature=0.4)
+    return await call_gemini(prompt, temperature=0.4, task_type="fast")
 
 
 async def run_qa_agent(
@@ -296,7 +296,7 @@ Instructions:
 - Keep response under 350 words unless detail is requested
 - Use markdown formatting (bold, bullets) for clarity"""
 
-    answer = await call_gemini(prompt, temperature=0.5)
+    answer = await call_gemini(prompt, temperature=0.5, task_type="reasoning")
     retest_suggestion = _extract_retest_suggestion(answer, scenario)
 
     return {

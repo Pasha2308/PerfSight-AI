@@ -10,6 +10,24 @@ async def get_db():
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                hashed_password TEXT NOT NULL,
+                name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                owner_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(owner_id) REFERENCES users(id)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS test_runs (
                 id TEXT PRIMARY KEY,
                 project_name TEXT,
@@ -21,6 +39,9 @@ async def init_db():
                 metrics_json TEXT,
                 findings_json TEXT,
                 report_json TEXT,
+                nl_description TEXT,
+                user_id TEXT,
+                workspace_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP
             )
@@ -125,3 +146,25 @@ async def get_baseline(project_name: str) -> dict:
         ) as cur:
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+async def create_user(user_id: str, email: str, hashed_password: str, name: str = ""):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO users (id, email, hashed_password, name) VALUES (?, ?, ?, ?)",
+            (user_id, email, hashed_password, name)
+        )
+        await db.commit()
+
+async def get_user_by_email(email: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+async def get_user_by_id(user_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
