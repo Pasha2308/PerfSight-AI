@@ -15,62 +15,32 @@ async def run_report_agent(findings: Dict[str, Any], scenario: Dict[str, Any]) -
         "app_type": scenario.get("app_type"),
     }, indent=2)
 
-    # --- Executive Summary ---
-    exec_prompt = f"""You are a performance engineering expert writing a report for a CTO/VP Engineering.
+    prompt = f"""You are a senior performance engineer analyzing a performance test.
 
 SCENARIO: {scenario_str}
 FINDINGS: {findings_str}
 
-Write a concise executive summary (3-4 sentences) that:
-1. States the overall test verdict (Pass/Fail)
-2. Describes the most critical finding in plain business language
-3. States the business impact (e.g., "users will experience 4+ second delays during peak traffic")
-4. Gives one clear action item
+Please generate a comprehensive JSON report containing exactly these four keys:
+"executive_summary": "Write a concise executive summary (3-4 sentences) that states the overall test verdict (Pass/Fail), describes the most critical finding in plain business language, states the business impact, and gives one clear action item. Plain English, no technical jargon.",
+"technical_rca": "Write a technical RCA that includes what happened (timeline of events), why it happened (root cause with evidence), how it was detected (which metrics revealed the issue), and which components were affected. Use specific numbers.",
+"remediation_steps": "For each root cause identified, provide a specific, actionable fix with example config values where relevant, estimated fix effort in hours, expected improvement, and how to validate the fix. Format as a numbered list with headers.",
+"key_observations": "List 5 key observations as bullet points, starting each with a relevant emoji. Each observation should be a single, specific, data-backed insight."
 
-Write in plain English, no technical jargon. Return ONLY the summary text."""
+Return ONLY valid JSON.
+"""
+    from agents.gemini_client import call_gemini_json
+    report_data = await call_gemini_json(prompt, temperature=0.3, task_type="reasoning")
 
-    exec_summary = await call_gemini(exec_prompt, temperature=0.4, task_type="reasoning")
+    # Fallback strings in case JSON parsing fails
+    exec_summary = report_data.get("executive_summary", "Executive summary not available.")
+    tech_rca = report_data.get("technical_rca", "Technical RCA not available.")
+    remediation = report_data.get("remediation_steps", "Remediation steps not available.")
+    observations = report_data.get("key_observations", "Key observations not available.")
 
-    # --- Technical RCA ---
-    tech_prompt = f"""You are a senior performance engineer writing a technical root cause analysis.
-
-SCENARIO: {scenario_str}
-FINDINGS: {findings_str}
-
-Write a technical RCA that includes:
-1. What happened (timeline of events)
-2. Why it happened (root cause with evidence from the data)
-3. How it was detected (which metrics revealed the issue)
-4. Which components were affected and in what order
-
-Use specific numbers from the findings. Be precise. Return ONLY the analysis text, using clear paragraphs."""
-
-    tech_rca = await call_gemini(tech_prompt, temperature=0.3, task_type="reasoning")
-
-    # --- Remediation Steps ---
-    remed_prompt = f"""You are a performance engineering expert providing actionable remediation guidance.
-
-SCENARIO: {scenario_str}
-FINDINGS: {findings_str}
-
-For each root cause identified, provide:
-1. A specific, actionable fix (with example config values where relevant)
-2. Estimated fix effort (hours)
-3. Expected improvement after fix
-4. How to validate the fix (what to retest)
-
-Format as a numbered list with clear headers. Be specific — name actual config files, parameters, and values.
-Return ONLY the remediation steps."""
-
-    remediation = await call_gemini(remed_prompt, temperature=0.3, task_type="reasoning")
-
-    # --- Key Observations ---
-    obs_prompt = f"""Based on this performance test data, list 5 key observations as bullet points.
-Each observation should be a single, specific, data-backed insight.
-FINDINGS: {findings_str}
-Return ONLY the 5 bullet points, starting each with a relevant emoji."""
-
-    observations = await call_gemini(obs_prompt, temperature=0.4, task_type="fast")
+    # If it failed to parse completely, use the raw response as RCA
+    if report_data.get("parse_error"):
+        print("[Report] Failed to parse JSON report. Using raw text.")
+        tech_rca = report_data.get("raw_response", "")
 
     return {
         "executive_summary": exec_summary,

@@ -134,26 +134,36 @@ async def call_gemini(
             max_output_tokens=max_output_tokens,
         )
 
-        try:
-            response = await client.aio.models.generate_content(
-                model=model,
-                contents=prompt,
-                config=config,
-            )
-            return response.text.strip()
-        except Exception as e:
-            # Route to fallback model if reasoning or fast fail
-            fallback_model = VERTEX_MODEL_FAST if model == VERTEX_MODEL_REASONING else VERTEX_MODEL_REASONING
-            print(f"[AI] Model {model} failed ({e}), trying {fallback_model}...")
+        retries = 3
+        for attempt in range(retries):
             try:
                 response = await client.aio.models.generate_content(
-                    model=fallback_model,
+                    model=model,
                     contents=prompt,
                     config=config,
                 )
                 return response.text.strip()
-            except Exception as e2:
-                raise RuntimeError(f"Both models failed. Primary: {e}, Fallback: {e2}")
+            except Exception as e:
+                err_str = str(e).lower()
+                if "429" in err_str or "quota" in err_str or "exhausted" in err_str:
+                    if attempt < retries - 1:
+                        wait_time = 2 ** attempt * 5 # 5s, 10s
+                        print(f"[AI] Rate limited ({e}). Waiting {wait_time}s before retry...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                
+                # Route to fallback model if reasoning or fast fail and not rate limited
+                fallback_model = VERTEX_MODEL_FAST if model == VERTEX_MODEL_REASONING else VERTEX_MODEL_REASONING
+                print(f"[AI] Model {model} failed ({e}), trying {fallback_model}...")
+                try:
+                    response = await client.aio.models.generate_content(
+                        model=fallback_model,
+                        contents=prompt,
+                        config=config,
+                    )
+                    return response.text.strip()
+                except Exception as e2:
+                    raise RuntimeError(f"Both models failed. Primary: {e}, Fallback: {e2}")
 
 
 async def call_gemini_json(
