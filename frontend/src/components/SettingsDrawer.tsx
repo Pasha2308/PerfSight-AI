@@ -172,9 +172,7 @@ export function saveLLMConfig(config: LLMConfig) {
 
 export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [config, setConfig] = useState<LLMConfig>(getLLMConfig);
-  const [showKey, setShowKey] = useState<Record<LLMProvider, boolean>>({
-    google: false, openai: false, anthropic: false,
-  });
+  const [showKey, setShowKey] = useState<Partial<Record<LLMProvider, boolean>>>({});
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
