@@ -339,6 +339,8 @@ export default function App() {
             <LogOut size={16} />
           </button>
         </div>
+          )}
+        </div>
       </header>
 
       {/* ── Main ── */}

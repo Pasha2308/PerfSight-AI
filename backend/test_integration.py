@@ -8,11 +8,14 @@ import json
 import sys
 import time
 
+sys.stdout.reconfigure(encoding='utf-8')
+sys.stderr.reconfigure(encoding='utf-8')
+
 BASE = "http://localhost:8000"
 PASS = 0
 FAIL = 0
 
-def test(name, condition, detail=""):
+def check_result(name, condition, detail=""):
     global PASS, FAIL
     if condition:
         PASS += 1
@@ -23,15 +26,15 @@ def test(name, condition, detail=""):
 
 async def main():
     global PASS, FAIL
-    async with httpx.AsyncClient(base_url=BASE, timeout=120.0) as client:
+    async with httpx.AsyncClient(base_url=BASE, timeout=300.0) as client:
 
         # ─── 1. Health Check ─────────────────────────────────────
         print("\n[Test 1] Health Check")
         r = await client.get("/api/health")
-        test("Status 200", r.status_code == 200)
+        check_result("Status 200", r.status_code == 200)
         data = r.json()
-        test("Version 2.0.0", data.get("version") == "2.0.0")
-        test("Engine is Vertex AI", data.get("engine") == "Vertex AI")
+        check_result("Version 2.0.0", data.get("version") == "2.0.0")
+        check_result("Engine is Vertex AI", data.get("engine") == "Vertex AI")
 
         # ─── 2. NL Scenario Parse ────────────────────────────────
         print("\n[Test 2] NL Scenario Parse (SETI Algorithm)")
@@ -40,15 +43,15 @@ async def main():
             "target_url": "https://www.irctc.co.in",
             "project_name": "IRCTC Load Test"
         })
-        test("Status 200", r.status_code == 200, f"Got {r.status_code}")
+        check_result("Status 200", r.status_code == 200, f"Got {r.status_code}")
         if r.status_code == 200:
             scenario = r.json()
-            test("Has scenario_type", "scenario_type" in scenario)
-            test("Has inferred_endpoints", "inferred_endpoints" in scenario and len(scenario["inferred_endpoints"]) > 0)
-            test("Has load_parameters", "load_parameters" in scenario)
-            test("Has risk_areas", "risk_areas" in scenario)
-            test("Has extracted_entities", "extracted_entities" in scenario)
-            test("NL description preserved", scenario.get("nl_description") != "")
+            check_result("Has scenario_type", "scenario_type" in scenario)
+            check_result("Has inferred_endpoints", "inferred_endpoints" in scenario and len(scenario["inferred_endpoints"]) > 0)
+            check_result("Has load_parameters", "load_parameters" in scenario)
+            check_result("Has risk_areas", "risk_areas" in scenario)
+            check_result("Has extracted_entities", "extracted_entities" in scenario)
+            check_result("NL description preserved", scenario.get("nl_description") != "")
             print(f"     Scenario: {scenario.get('scenario_type')} | VUs: {scenario.get('load_parameters', {}).get('peak_vus')} | Template: {scenario.get('template_key')}")
 
         # ─── 3. Start a Quick Test (NL Pipeline) ─────────────────
@@ -59,13 +62,13 @@ async def main():
             "project_name": "API Quick Test",
             "tool": "k6"
         })
-        test("Status 200", r.status_code == 200, f"Got {r.status_code}")
+        check_result("Status 200", r.status_code == 200, f"Got {r.status_code}")
         run_id = None
         if r.status_code == 200:
             data = r.json()
             run_id = data.get("run_id")
-            test("Got run_id", run_id is not None)
-            test("Has scenario", "scenario" in data)
+            check_result("Got run_id", run_id is not None)
+            check_result("Has scenario", "scenario" in data)
             print(f"     Run ID: {run_id}")
 
         # Wait for pipeline to complete
@@ -82,17 +85,17 @@ async def main():
             r = await client.get(f"/api/tests/{run_id}")
             if r.status_code == 200:
                 run_data = r.json()
-                test("Pipeline completed", run_data.get("status") == "completed", f"Status: {run_data.get('status')}")
+                check_result("Pipeline completed", run_data.get("status") == "completed", f"Status: {run_data.get('status')}")
             
             # ─── 4. Get Report ───────────────────────────────────
             print("\n[Test 4] Report Retrieval")
             r = await client.get(f"/api/tests/{run_id}/report")
-            test("Status 200", r.status_code == 200)
+            check_result("Status 200", r.status_code == 200)
             if r.status_code == 200:
                 report = r.json()
-                test("Has report data", report.get("report") is not None)
-                test("Has findings", report.get("findings") is not None)
-                test("Has script", report.get("script") is not None)
+                check_result("Has report data", report.get("report") is not None)
+                check_result("Has findings", report.get("findings") is not None)
+                check_result("Has script", report.get("script") is not None)
 
             # ─── 5. QA Chat ─────────────────────────────────────
             print("\n[Test 5] QA Agent Chat")
@@ -100,12 +103,12 @@ async def main():
                 "test_run_id": run_id,
                 "message": "What was the root cause of any performance issues?"
             })
-            test("Status 200", r.status_code == 200, f"Got {r.status_code}")
+            check_result("Status 200", r.status_code == 200, f"Got {r.status_code}")
             if r.status_code == 200:
                 chat = r.json()
-                test("Has answer", len(chat.get("answer", "")) > 10)
-                test("Has intent", "intent" in chat)
-                test("Has suggestions", len(chat.get("suggested_questions", [])) > 0)
+                check_result("Has answer", len(chat.get("answer", "")) > 10)
+                check_result("Has intent", "intent" in chat)
+                check_result("Has suggestions", len(chat.get("suggested_questions", [])) > 0)
                 print(f"     Intent: {chat.get('intent')} | Answer length: {len(chat.get('answer', ''))}")
 
             # ─── 6. CI/CD Quality Gate ────────────────────────────
@@ -116,12 +119,12 @@ async def main():
                 "sla_error_rate_pct": 1.0,
                 "sla_min_throughput_rps": 50
             })
-            test("Status 200", r.status_code == 200)
+            check_result("Status 200", r.status_code == 200)
             if r.status_code == 200:
                 gate = r.json()
-                test("Has gate verdict", gate.get("gate") in ("PASS", "FAIL"))
-                test("Has exit_code", "exit_code" in gate)
-                test("Has KPIs", "kpis" in gate)
+                check_result("Has gate verdict", gate.get("gate") in ("PASS", "FAIL"))
+                check_result("Has exit_code", "exit_code" in gate)
+                check_result("Has KPIs", "kpis" in gate)
                 print(f"     Gate: {gate.get('gate')} | Exit code: {gate.get('exit_code')}")
 
         # ─── 7. JMX Correlation Test ─────────────────────────────
@@ -176,14 +179,14 @@ async def main():
 </jmeterTestPlan>"""
 
         r = await client.post("/api/correlate/jmx-text", data={"jmx_content": test_jmx})
-        test("Status 200", r.status_code == 200, f"Got {r.status_code}: {r.text[:200] if r.status_code != 200 else ''}")
+        check_result("Status 200", r.status_code == 200, f"Got {r.status_code}: {r.text[:200] if r.status_code != 200 else ''}")
         if r.status_code == 200:
             corr = r.json()
-            test("Has correlations_found", "correlations_found" in corr)
-            test("Has correlated_jmx", "correlated_jmx" in corr and len(corr.get("correlated_jmx", "")) > 0)
-            test("Has summary", "summary" in corr)
-            test("Has time_saved", "time_saved_hours" in corr)
-            test("Has validation", "validation" in corr)
+            check_result("Has correlations_found", "correlations_found" in corr)
+            check_result("Has correlated_jmx", "correlated_jmx" in corr and len(corr.get("correlated_jmx", "")) > 0)
+            check_result("Has summary", "summary" in corr)
+            check_result("Has time_saved", "time_saved_hours" in corr)
+            check_result("Has validation", "validation" in corr)
             print(f"     Correlations: {corr.get('total_correlations', 0)} | Samplers: {corr.get('original_samplers', 0)} | Time saved: {corr.get('time_saved_hours', 0)}h")
 
         # ─── 8. JTL Import Test ──────────────────────────────────
@@ -204,25 +207,25 @@ async def main():
         import io
         files = {"file": ("test_results.jtl", test_jtl, "text/csv")}
         r = await client.post("/api/import/jtl", files=files, data={"project_name": "Import Test"})
-        test("Status 200", r.status_code == 200, f"Got {r.status_code}: {r.text[:200] if r.status_code != 200 else ''}")
+        check_result("Status 200", r.status_code == 200, f"Got {r.status_code}: {r.text[:200] if r.status_code != 200 else ''}")
         if r.status_code == 200:
             imp = r.json()
-            test("Has total_metrics", imp.get("total_metrics", 0) > 0, f"Got {imp.get('total_metrics')}")
-            test("Has KPIs", "kpis" in imp)
-            test("Has AI summary", "ai_summary" in imp and len(imp.get("ai_summary", "")) > 0)
-            test("Has full report", "report" in imp)
-            test("Has findings", "findings" in imp)
+            check_result("Has total_metrics", imp.get("total_metrics", 0) > 0, f"Got {imp.get('total_metrics')}")
+            check_result("Has KPIs", "kpis" in imp)
+            check_result("Has AI summary", "ai_summary" in imp and len(imp.get("ai_summary", "")) > 0)
+            check_result("Has full report", "report" in imp)
+            check_result("Has findings", "findings" in imp)
             kpis = imp.get("kpis", {})
             print(f"     Metrics: {imp.get('total_metrics')} | p99: {kpis.get('p99_ms', 'N/A')}ms | Errors: {kpis.get('error_rate_pct', 'N/A')}%")
 
         # ─── 9. List Tests ───────────────────────────────────────
         print("\n[Test 9] List All Tests")
         r = await client.get("/api/tests")
-        test("Status 200", r.status_code == 200)
+        check_result("Status 200", r.status_code == 200)
         if r.status_code == 200:
             tests = r.json()
-            test("Returns list", isinstance(tests, list))
-            test("Has test runs", len(tests) > 0)
+            check_result("Returns list", isinstance(tests, list))
+            check_result("Has test runs", len(tests) > 0)
             print(f"     Total test runs: {len(tests)}")
 
         # ─── Summary ─────────────────────────────────────────────

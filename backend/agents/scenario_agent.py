@@ -60,9 +60,9 @@ Return ONLY valid JSON with this exact structure:
   "user_journey": "Description of how a real user would interact with this app",
   "load_parameters": {{
     "peak_vus": 100,
-    "ramp_up_duration_sec": 120,
-    "steady_state_duration_sec": 300,
-    "ramp_down_duration_sec": 60,
+    "ramp_up_duration_sec": 5,
+    "steady_state_duration_sec": 20,
+    "ramp_down_duration_sec": 5,
     "think_time_sec": 2
   }},
   "sla_targets": {{
@@ -100,9 +100,9 @@ Return ONLY valid JSON with this exact structure:
             "user_journey": f"Simulating {scenario['name']} traffic pattern against {target_url}",
             "load_parameters": {
                 "peak_vus": 100,
-                "ramp_up_duration_sec": 120,
-                "steady_state_duration_sec": 300,
-                "ramp_down_duration_sec": 60,
+                "ramp_up_duration_sec": 5,
+                "steady_state_duration_sec": 20,
+                "ramp_down_duration_sec": 5,
                 "think_time_sec": 2,
             },
             "sla_targets": {"p99_ms": 500, "error_rate_pct": 1.0, "min_throughput_rps": 50},

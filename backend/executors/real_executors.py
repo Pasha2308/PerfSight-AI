@@ -14,6 +14,9 @@ import json
 import time
 import random
 import math
+import re
+import queue
+import threading
 from typing import Dict, Any, List, Callable, Optional
 from pathlib import Path
 
@@ -61,30 +64,70 @@ class K6Executor(BaseExecutor):
             str(script_path),
         ]
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             cwd=str(work_dir),
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            bufsize=1
         )
 
-        # Stream stdout for progress
+        q = queue.Queue()
+        def read_output(stream, q):
+            for line in iter(stream.readline, ""):
+                q.put(line)
+            stream.close()
+            q.put(None)
+
+        t = threading.Thread(target=read_output, args=(proc.stdout, q), daemon=True)
+        t.start()
+
+        load_params = scenario.get("load_parameters", {})
+        ramp_up = load_params.get("ramp_up_duration_sec", 60)
+        steady = load_params.get("steady_state_duration_sec", 120)
+        ramp_down = load_params.get("ramp_down_duration_sec", 30)
+        total_duration = max(5, ramp_up + steady + ramp_down)
+
         start_time = int(time.time() * 1000)
-        step = 0
+        all_stdout = []
+        
         while True:
-            line = await proc.stdout.readline()
-            if not line:
+            # Process items currently in queue
+            lines = []
+            while True:
+                try:
+                    line = q.get_nowait()
+                    if line is None:
+                        break
+                    lines.append(line)
+                except queue.Empty:
+                    break
+
+            for line_str in lines:
+                all_stdout.append(line_str)
+                line_str_clean = line_str.strip()
+                if line_str_clean:
+                    batch = _parse_k6_stdout_line(line_str_clean, start_time, total_duration, scenario)
+                    if batch:
+                        all_metrics.extend(batch.get("metrics", []))
+                        await on_metric(batch)
+
+            if proc.poll() is not None and q.empty():
                 break
-            line_str = line.decode("utf-8", errors="ignore").strip()
 
-            # Parse k6 progress lines (they contain VU info)
-            step += 1
-            batch = _parse_k6_stdout_line(line_str, start_time, step, scenario)
-            if batch:
-                all_metrics.extend(batch.get("metrics", []))
-                await on_metric(batch)
+            await asyncio.sleep(0.1)
 
-        await proc.wait()
+        proc.wait()
+
+        # Check for test tool execution errors
+        if proc.returncode not in (0, 99):
+            full_err = "".join(all_stdout)
+            safe_err = full_err.encode("ascii", errors="replace").decode("ascii")
+            print(f"[Executor] k6 run failed with code {proc.returncode}. Output:\n{safe_err}")
+            raise Exception(f"k6 execution failed (exit code {proc.returncode}): {safe_err[:500]}")
 
         # Parse the JSON output file for final metrics
         if output_path.exists():
@@ -95,29 +138,40 @@ class K6Executor(BaseExecutor):
         return all_metrics
 
 
-def _parse_k6_stdout_line(line: str, start_time: int, step: int, scenario: Dict) -> Optional[Dict]:
+def _parse_k6_stdout_line(line: str, start_time: int, total_duration: int, scenario: Dict) -> Optional[Dict]:
     """Parse k6 progress output into metric batch."""
     if "http_req_duration" not in line and "VUs" not in line:
         return None
+
+    # Parse current VUs from k6 status line (e.g. "10/50 VUs", "10 VUs", or "VUs=10")
+    vus = 10
+    vu_match = re.search(r'(\d+)(?:/\d+)?\s*VUs', line, re.IGNORECASE)
+    if vu_match:
+        vus = int(vu_match.group(1))
+    else:
+        vus = _extract_int(line, "VUs=", 10)
+
+    elapsed_sec = int((time.time() * 1000 - start_time) / 1000)
+    progress_pct = min(99, int((elapsed_sec / total_duration) * 100)) if total_duration > 0 else 50
 
     endpoints = scenario.get("inferred_endpoints", [{"path": "/", "method": "GET", "weight": 100}])
     ep = random.choice(endpoints)
 
     return {
         "type": "metrics_batch",
-        "elapsed_sec": step * 2,
-        "vus": _extract_int(line, "VUs=", 10),
+        "elapsed_sec": elapsed_sec,
+        "vus": vus,
         "metrics": [{
-            "timestamp": start_time + step * 2000,
+            "timestamp": start_time + elapsed_sec * 1000,
             "endpoint": ep["path"],
             "method": ep.get("method", "GET"),
             "response_time": random.uniform(50, 300),
             "status_code": 200,
-            "vus": _extract_int(line, "VUs=", 10),
+            "vus": vus,
             "bytes": random.randint(500, 5000),
         }],
         "infra": None,
-        "progress_pct": min(99, step),
+        "progress_pct": progress_pct,
     }
 
 
@@ -186,10 +240,13 @@ class JMeterExecutor(BaseExecutor):
             "-Djmeter.save.saveservice.print_field_names=true",
         ]
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="ignore"
         )
 
         start_time = int(time.time() * 1000)
@@ -197,8 +254,10 @@ class JMeterExecutor(BaseExecutor):
             _stream_jtl(str(jtl_path), on_metric, all_metrics, start_time, scenario)
         )
 
-        # Wait for JMeter to finish
-        stdout, _ = await proc.communicate()
+        # Wait for JMeter to finish without blocking the event loop
+        while proc.poll() is None:
+            await asyncio.sleep(0.5)
+
         jtl_reader_task.cancel()
 
         # Final parse of complete JTL file
@@ -339,8 +398,16 @@ class LocustExecutor(BaseExecutor):
             "--host", scenario.get("target_url", "http://localhost"),
         ]
 
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        await proc.communicate()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="ignore"
+        )
+        while proc.poll() is None:
+            await asyncio.sleep(0.5)
 
         # Parse Locust CSV output
         stats_path = work_dir / "results_stats_history.csv"

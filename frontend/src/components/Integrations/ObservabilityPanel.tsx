@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, Database, CloudRain, Play, AlertCircle } from 'lucide-react';
-import { useStore } from '../../../store';
-import { startTestNL } from '../../../api';
+import { useStore } from '../../store';
+import { startTestNL } from '../../api';
 
 export const ObservabilityPanel: React.FC = () => {
   const [streaming, setStreaming] = useState(false);

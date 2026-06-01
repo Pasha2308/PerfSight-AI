@@ -1,65 +1,66 @@
 """
-PerfSight AI — Vertex AI Client
-Uses the google-genai SDK with Vertex AI backend.
-Supports model routing: fast (Flash) for quick tasks, reasoning (Pro) for complex analysis.
-
-Uses GCP credits via Vertex AI — no API key exposure.
+PerfSight AI — Unified LLM Router
+Supports model routing across Gemini (Vertex AI / Developer API), Groq, and OpenRouter.
+Managed via the LLM_PROVIDER env variable for a 1-click switch.
 """
 import os
 import json
 import asyncio
-from typing import Optional
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
+import httpx
 
 load_dotenv(override=True)
 
 # ─── Configuration ────────────────────────────────────────────────
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "vertex").lower()
+
+# Google / Vertex AI config
 GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
-MODEL_FAST = os.getenv("VERTEX_MODEL_FAST", "gemini-2.5-flash")
-MODEL_REASONING = os.getenv("VERTEX_MODEL_REASONING", "gemini-2.5-pro")
-
-# Fallback: if user still has GEMINI_API_KEY, use that (backwards compatible)
+VERTEX_MODEL_FAST = os.getenv("VERTEX_MODEL_FAST", "gemini-2.5-flash")
+VERTEX_MODEL_REASONING = os.getenv("VERTEX_MODEL_REASONING", "gemini-2.5-pro")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
+# Groq config
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL_FAST = os.getenv("GROQ_MODEL_FAST", "llama-3.3-70b-versatile")
+GROQ_MODEL_REASONING = os.getenv("GROQ_MODEL_REASONING", "llama-3.3-70b-specdec")
+
+# OpenRouter config
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL_FAST = os.getenv("OPENROUTER_MODEL_FAST", "google/gemini-2.5-flash")
+OPENROUTER_MODEL_REASONING = os.getenv("OPENROUTER_MODEL_REASONING", "google/gemini-2.5-pro")
+
+# Auto-detect Vertex AI mode
 USE_VERTEX = bool(GCP_PROJECT) and GEMINI_API_KEY in ("", "your_gemini_api_key_here")
 
-_client = None
 
-
-def _get_client():
-    """Lazy-initialize the genai client."""
-    global _client
-    if _client is not None:
-        return _client
-
+def _get_vertex_client():
+    """Initialize the genai client for Google Vertex AI."""
     from google import genai
 
     if USE_VERTEX:
-        # Enterprise mode: Vertex AI with GCP credentials
-        _client = genai.Client(
+        return genai.Client(
             vertexai=True,
             project=GCP_PROJECT,
             location=GCP_LOCATION,
         )
-        print(f"[AI] Using Vertex AI — Project: {GCP_PROJECT}, Location: {GCP_LOCATION}")
     else:
-        # Fallback: API key mode (for local dev / quick testing)
-        _client = genai.Client(api_key=GEMINI_API_KEY)
-        print(f"[AI] Using Gemini API key mode (set GCP_PROJECT_ID to use Vertex AI)")
-
-    return _client
+        return genai.Client(api_key=GEMINI_API_KEY)
 
 
 def get_model_name(task_type: str = "fast") -> str:
     """
-    Route to the right model based on task complexity.
-
-    - 'fast': Script generation, NL parsing, reformatting, chat responses
-    - 'reasoning': Root cause analysis, report generation, complex analysis
+    Route to the right model based on task complexity and provider.
     """
-    if task_type == "reasoning":
-        return MODEL_REASONING
-    return MODEL_FAST
+    if LLM_PROVIDER == "groq":
+        return GROQ_MODEL_REASONING if task_type == "reasoning" else GROQ_MODEL_FAST
+    elif LLM_PROVIDER == "openrouter":
+        return OPENROUTER_MODEL_REASONING if task_type == "reasoning" else OPENROUTER_MODEL_FAST
+    else:
+        # Defaults to Gemini / Vertex AI
+        return VERTEX_MODEL_REASONING if task_type == "reasoning" else VERTEX_MODEL_FAST
 
 
 async def call_gemini(
@@ -69,46 +70,90 @@ async def call_gemini(
     max_output_tokens: int = 8192,
 ) -> str:
     """
-    Call Gemini via Vertex AI (or API key fallback).
-
-    Args:
-        prompt: The prompt to send
-        temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative)
-        task_type: 'fast' for quick ops, 'reasoning' for complex analysis
-        max_output_tokens: Maximum response length
+    Unified LLM entry point. Routes requests based on LLM_PROVIDER setting.
+    Maintains compatibility with all existing agents expecting `call_gemini`.
     """
-    client = _get_client()
     model = get_model_name(task_type)
 
-    from google.genai.types import GenerateContentConfig
+    # 1. Groq Provider
+    if LLM_PROVIDER == "groq":
+        if not GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY is not set in environment variables.")
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_output_tokens,
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            res_data = response.json()
+            return res_data["choices"][0]["message"]["content"].strip()
 
-    config = GenerateContentConfig(
-        temperature=temperature,
-        max_output_tokens=max_output_tokens,
-    )
+    # 2. OpenRouter Provider
+    elif LLM_PROVIDER == "openrouter":
+        if not OPENROUTER_API_KEY:
+            raise ValueError("OPENROUTER_API_KEY is not set in environment variables.")
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "PerfSight",
+        }
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            res_data = response.json()
+            return res_data["choices"][0]["message"]["content"].strip()
 
-    try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=model,
-            contents=prompt,
-            config=config,
+    # 3. Default: Gemini (Vertex AI / Developer API Key fallback)
+    else:
+        client = _get_vertex_client()
+        from google.genai.types import GenerateContentConfig
+
+        config = GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
         )
-        return response.text.strip()
-    except Exception as e:
-        # If the preferred model fails, try the fallback
-        fallback_model = MODEL_FAST if model == MODEL_REASONING else MODEL_REASONING
-        print(f"[AI] Model {model} failed ({e}), trying {fallback_model}...")
+
         try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=fallback_model,
+            response = await client.aio.models.generate_content(
+                model=model,
                 contents=prompt,
                 config=config,
             )
             return response.text.strip()
-        except Exception as e2:
-            raise RuntimeError(f"Both models failed. Primary: {e}, Fallback: {e2}")
+        except Exception as e:
+            # Route to fallback model if reasoning or fast fail
+            fallback_model = VERTEX_MODEL_FAST if model == VERTEX_MODEL_REASONING else VERTEX_MODEL_REASONING
+            print(f"[AI] Model {model} failed ({e}), trying {fallback_model}...")
+            try:
+                response = await client.aio.models.generate_content(
+                    model=fallback_model,
+                    contents=prompt,
+                    config=config,
+                )
+                return response.text.strip()
+            except Exception as e2:
+                raise RuntimeError(f"Both models failed. Primary: {e}, Fallback: {e2}")
 
 
 async def call_gemini_json(
@@ -117,8 +162,7 @@ async def call_gemini_json(
     task_type: str = "fast",
 ) -> dict:
     """
-    Call Gemini and parse the response as JSON.
-    Handles markdown code fences and extracts the JSON object.
+    Call the active LLM router and parse response as JSON.
     """
     raw = await call_gemini(prompt, temperature=temperature, task_type=task_type)
 

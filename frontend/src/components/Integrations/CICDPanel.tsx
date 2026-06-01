@@ -65,9 +65,9 @@ export const CICDPanel: React.FC = () => {
         </div>
 
         <div style={{ flex: 1, minWidth: 300, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Judge Simulation</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Webhook Integration</h3>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-            Click to simulate a GitHub Pull Request webhook firing. This proves the automated headless testing workflow.
+            Trigger a GitHub Pull Request webhook call to verify the automated headless testing workflow.
           </p>
           <button 
             className="btn btn-primary" 
@@ -76,7 +76,7 @@ export const CICDPanel: React.FC = () => {
             style={{ padding: '12px 16px', display: 'flex', justifyContent: 'center', gap: 8 }}
           >
             {simulating ? <div className="spinner" style={{ width: 16, height: 16 }} /> : <Play size={16} />}
-            Simulate PR Merge Webhook
+            Trigger Webhook Check
           </button>
 
           {logs.length > 0 && (

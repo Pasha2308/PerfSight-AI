@@ -9,6 +9,23 @@ import re
 from typing import Dict, Any, Optional
 from agents.gemini_client import call_gemini
 
+def _parse_duration_to_seconds(text: str) -> Optional[int]:
+    if not text:
+        return None
+    text = text.lower()
+    # Match numbers followed by s, sec, second, seconds, m, min, minute, minutes, h, hr, hour, hours
+    match = re.search(r'(\d+)\s*(s|sec|second|m|min|minute|h|hr|hour)', text)
+    if match:
+        val = int(match.group(1))
+        unit = match.group(2)
+        if unit.startswith('s'):
+            return val
+        elif unit.startswith('m'):
+            return val * 60
+        elif unit.startswith('h'):
+            return val * 3600
+    return None
+
 # ─────────────────────────────────────────────────────────────────
 # Domain Scenario Library — 30+ real-world incident templates
 # ─────────────────────────────────────────────────────────────────
@@ -228,24 +245,38 @@ Extract these entities and return ONLY valid JSON:
     )
     peak_vus = max(10, int(peak_vus))
 
-    # Ramp parameters based on pattern
-    pattern = extracted.get("when", {}).get("pattern", template["ramp_shape"])
-    if pattern == "instant_burst" or scenario_type == "spike":
-        ramp_up_sec = 30
-        steady_sec = 180
-        ramp_down_sec = 30
-    elif scenario_type == "soak":
-        ramp_up_sec = 120
-        steady_sec = 1800  # 30 min
-        ramp_down_sec = 60
-    elif scenario_type == "stress":
-        ramp_up_sec = 300
-        steady_sec = 60
-        ramp_down_sec = 30
+    # Parse duration hint from description or extraction hint
+    duration_sec = _parse_duration_to_seconds(extracted.get("when", {}).get("duration_hint", ""))
+    if not duration_sec:
+        duration_sec = _parse_duration_to_seconds(description)
+
+    if duration_sec:
+        # Calibrate ramp parameters proportionally to user-specified duration
+        ramp_up_sec = max(5, int(duration_sec * 0.15))
+        ramp_down_sec = max(5, int(duration_sec * 0.15))
+        steady_sec = max(5, duration_sec - ramp_up_sec - ramp_down_sec)
     else:
-        ramp_up_sec = 120
-        steady_sec = 300
-        ramp_down_sec = 60
+        # Default to short, snappy durations for quick demo/local verification
+        if scenario_type == "spike":
+            ramp_up_sec = 5
+            steady_sec = 15
+            ramp_down_sec = 5
+        elif scenario_type == "soak":
+            ramp_up_sec = 10
+            steady_sec = 20
+            ramp_down_sec = 5
+        elif scenario_type == "stress":
+            ramp_up_sec = 15
+            steady_sec = 5
+            ramp_down_sec = 5
+        elif scenario_type == "breakpoint":
+            ramp_up_sec = 15
+            steady_sec = 5
+            ramp_down_sec = 5
+        else:  # load
+            ramp_up_sec = 5
+            steady_sec = 20
+            ramp_down_sec = 5
 
     # Build final scenario config
     benchmarks = template["industry_benchmarks"]

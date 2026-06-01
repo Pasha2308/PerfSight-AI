@@ -1,0 +1,24 @@
+{
+  "scenes": [
+    {
+      "id": "scene_1_intro",
+      "text": "Welcome to PerfSight AI, the enterprise platform for autonomous performance testing. Let's begin by logging in.",
+      "ui_action": "login"
+    },
+    {
+      "id": "scene_2_scenario",
+      "text": "PerfSight AI uses advanced natural language processing to design complex load testing scenarios. Here, we simply describe a traffic spike, and the AI instantly generates a production-ready execution plan.",
+      "ui_action": "parse_scenario"
+    },
+    {
+      "id": "scene_3_script",
+      "text": "Once the scenario is designed, our script generation agents translate the plan into executable code for tools like k6 or JMeter. Notice how quickly the system provides a ready-to-run script.",
+      "ui_action": "generate_script"
+    },
+    {
+      "id": "scene_4_execution",
+      "text": "Finally, we trigger the execution pipeline. The AI monitors the live test, captures the data, and uses machine learning to pinpoint performance anomalies and generate actionable root cause analysis reports. Thank you for watching.",
+      "ui_action": "view_report"
+    }
+  ]
+}

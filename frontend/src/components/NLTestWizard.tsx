@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Globe, Play, ChevronDown, Zap, Wand2, AlertCircle, CheckCircle, Loader, Target, Settings } from 'lucide-react';
+import { Globe, Play, ChevronDown, Zap, Wand2, AlertCircle, CheckCircle, Loader, Target, Settings, Code, Sparkles, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useStore } from '../store';
 import { createWebSocket } from '../api';
 import axios from 'axios';
@@ -32,6 +32,8 @@ const SUGGESTED_URLS = [
 type UrlStatus = 'idle' | 'checking' | 'reachable' | 'unreachable';
 
 export const NLTestWizard: React.FC = () => {
+  // Wizard steps: 1 = Setup, 2 = Script Review & Refine, 3 = Launch
+  const [step, setStep] = useState(1);
   const [description, setDescription] = useState('');
   const [url, setUrl] = useState('');
   const [project, setProject] = useState('');
@@ -39,6 +41,9 @@ export const NLTestWizard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [parsedScenario, setParsedScenario] = useState<any>(null);
+  const [scriptText, setScriptText] = useState('');
+  const [refinementPrompt, setRefinementPrompt] = useState('');
+  const [isRefining, setIsRefining] = useState(false);
   const [error, setError] = useState('');
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -82,7 +87,6 @@ export const NLTestWizard: React.FC = () => {
         await fetch(url, { method: 'HEAD', mode: 'no-cors', signal: AbortSignal.timeout(5000) });
         setUrlStatus('reachable');
       } catch {
-        // no-cors fetch often succeeds even for real sites, so treat as reachable
         setUrlStatus('reachable');
       }
     }, 800);
@@ -91,27 +95,59 @@ export const NLTestWizard: React.FC = () => {
     };
   }, [url]);
 
-  const handleParsePreview = async () => {
-    if (!description.trim() || !url.trim()) return;
+  const handleGenerateScript = async () => {
+    if (!description.trim() || !url.trim()) {
+      setError('Please complete the description and target URL.');
+      return;
+    }
+    setError('');
     setParsing(true);
-    setParsedScenario(null);
     try {
-      const result = await API.post('/api/scenarios/parse', {
+      // Step A: Parse scenario description
+      const scenarioRes = await API.post('/api/scenarios/parse', {
         description,
         target_url: url,
         project_name: project || 'My Project',
       });
-      setParsedScenario(result.data);
+      const scenarioData = scenarioRes.data;
+      setParsedScenario(scenarioData);
+
+      // Step B: Generate script
+      const scriptRes = await API.post('/api/scripts/generate', {
+        scenario: scenarioData,
+        tool,
+      });
+      setScriptText(scriptRes.data.script);
+      setStep(2);
     } catch (e: any) {
-      setError(e.message || 'Failed to parse scenario');
+      setError(e.response?.data?.detail || e.message || 'Failed to generate test scenario and script');
     } finally {
       setParsing(false);
     }
   };
 
+  const handleRefineScript = async () => {
+    if (!refinementPrompt.trim()) return;
+    setError('');
+    setIsRefining(true);
+    try {
+      const result = await API.post('/api/scripts/refine', {
+        script: scriptText,
+        instruction: refinementPrompt,
+        tool,
+        scenario: parsedScenario,
+      });
+      setScriptText(result.data.script);
+      setRefinementPrompt('');
+    } catch (e: any) {
+      setError(e.response?.data?.detail || e.message || 'Failed to refine script');
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
   const handleStart = async () => {
-    if (!description.trim()) { setError('Please describe your scenario'); return; }
-    if (!url.trim()) { setError('Please enter the target URL'); return; }
+    if (!description.trim() || !url.trim()) return;
     setError('');
     setLoading(true);
     reset();
@@ -121,6 +157,7 @@ export const NLTestWizard: React.FC = () => {
         target_url: url,
         project_name: project || 'My Project',
         tool,
+        custom_script: scriptText,
       });
       const { run_id } = result.data;
       setRunId(run_id);
@@ -145,8 +182,7 @@ export const NLTestWizard: React.FC = () => {
         }
       };
     } catch (e: any) {
-      setError(e.message || 'Failed to start test');
-    } finally {
+      setError(e.response?.data?.detail || e.message || 'Failed to start test execution');
       setLoading(false);
     }
   };
@@ -157,306 +193,409 @@ export const NLTestWizard: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: 740, margin: '0 auto' }}>
-
-      {/* Input Card */}
+    <div style={{ maxWidth: 840, margin: '0 auto' }}>
+      {/* Wizard Header Progress */}
       <div style={{
-        background: 'rgba(224,64,30,0.02)',
-        border: '1px solid rgba(224,64,30,0.15)',
-        borderRadius: 10, padding: '28px',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '0 20px', marginBottom: 28, position: 'relative'
       }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-          <div style={{
-            width: 46, height: 46, borderRadius: 12,
-            background: 'linear-gradient(135deg, var(--feuji-red), var(--feuji-amber))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 0 20px rgba(224,64,30,0.3)', flexShrink: 0,
-          }}>
-            <Wand2 size={22} color="white" />
-          </div>
-          <div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 3 }}>Describe Your Test Scenario</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>
-              Describe the real-world situation in plain English — no technical knowledge required.
-            </p>
-          </div>
-        </div>
-
-        {/* Scenario Textarea */}
-        <div style={{ position: 'relative', marginBottom: 14 }}>
-          <textarea
-            ref={textareaRef}
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            placeholder={EXAMPLE_SCENARIOS[placeholderIdx]}
-            disabled={loading}
-            className="input"
-            style={{
-              minHeight: 96, padding: '14px 16px', borderRadius: 8,
-              fontSize: 14, lineHeight: 1.6, resize: 'none',
-              border: description ? '1px solid rgba(224,64,30,0.45)' : undefined,
-              boxShadow: description ? '0 0 0 3px rgba(224,64,30,0.08)' : undefined,
-            }}
-          />
-          {description && (
-            <div style={{ position: 'absolute', bottom: 9, right: 12, fontSize: 10.5, color: 'var(--text-muted)' }}>
-              {description.length} chars
+        <div style={{ position: 'absolute', top: '50%', left: 40, right: 40, height: 2, background: 'var(--border)', zIndex: 1 }} />
+        <div style={{ position: 'absolute', top: '50%', left: 40, width: `${(step - 1) * 50}%`, height: 2, background: 'var(--feuji-red)', zIndex: 1, transition: 'width 0.3s ease' }} />
+        
+        {[
+          { num: 1, label: 'Configure scenario' },
+          { num: 2, label: 'Refine & edit script' },
+          { num: 3, label: 'Review & run test' }
+        ].map(s => (
+          <div key={s.num} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 2 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: step > s.num ? 'var(--feuji-red)' : step === s.num ? 'linear-gradient(135deg, var(--feuji-red), var(--feuji-amber))' : 'var(--bg-secondary)',
+              border: `2px solid ${step >= s.num ? 'var(--feuji-red)' : 'var(--border)'}`,
+              color: step >= s.num ? '#ffffff' : 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontWeight: 700, fontSize: 13, transition: 'all 0.3s ease'
+            }}>
+              {step > s.num ? <CheckCircle size={16} color="white" /> : s.num}
             </div>
-          )}
-        </div>
-
-        {/* Example Chips */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
-            Try an example:
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {[
-              'Flash sale spike — 1000 users buy iPhone at midnight',
-              'IRCTC Tatkal quota opening — 500 users book simultaneously',
-              'IPL live stream — 50K users tune in at match start',
-              'API stress test — push until system breaks',
-            ].map((ex, i) => (
-              <button key={i} onClick={() => fillExample(ex)} disabled={loading}
-                style={{
-                  padding: '4px 11px', borderRadius: 20, fontSize: 11.5, cursor: 'pointer',
-                  background: 'rgba(224,64,30,0.06)', border: '1px solid rgba(224,64,30,0.2)',
-                  color: 'var(--feuji-red)', fontFamily: 'inherit', transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(224,64,30,0.12)'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.background = 'rgba(224,64,30,0.06)'; }}>
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* URL + Project Row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 14 }}>
-          <div>
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <Globe size={11} /> Target URL
-              </span>
-              {urlStatus === 'checking' && (
-                <span className="status-pill checking"><Loader size={9} style={{ animation: 'spin 0.75s linear infinite' }} /> Checking</span>
-              )}
-              {urlStatus === 'reachable' && (
-                <span className="status-pill reachable"><CheckCircle size={9} /> Reachable</span>
-              )}
-              {urlStatus === 'unreachable' && (
-                <span className="status-pill unreachable"><AlertCircle size={9} /> Unreachable</span>
-              )}
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                className="input"
-                placeholder="https://your-api.example.com"
-                value={url}
-                onChange={e => { setUrl(e.target.value); setShowUrlSuggestions(false); }}
-                onFocus={() => !url && setShowUrlSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowUrlSuggestions(false), 200)}
-                type="url"
-                disabled={loading}
-                style={{ border: urlStatus === 'reachable' ? '1px solid rgba(46,168,74,0.4)' : urlStatus === 'unreachable' ? '1px solid rgba(230,57,70,0.4)' : undefined }}
-              />
-              {showUrlSuggestions && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-                  background: 'var(--bg-card)', border: '1px solid var(--border)',
-                  borderRadius: 8, marginTop: 4, overflow: 'hidden',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                }}>
-                  <div style={{ padding: '7px 12px', fontSize: 10.5, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border)' }}>
-                    Suggested Test Endpoints
-                  </div>
-                  {SUGGESTED_URLS.map((s, i) => (
-                    <button key={i}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left',
-                        padding: '9px 12px', background: 'none', border: 'none',
-                        cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => { (e.target as HTMLElement).style.background = 'var(--bg-card-hover)'; }}
-                      onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none'; }}
-                      onMouseDown={() => { setUrl(s.url); setShowUrlSuggestions(false); }}
-                    >
-                      <div style={{ fontSize: 12.5, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{s.url}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.label}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div style={{
+              fontSize: 11.5, fontWeight: step === s.num ? 600 : 500,
+              color: step === s.num ? 'var(--feuji-red)' : 'var(--text-muted)',
+              marginTop: 6, textTransform: 'uppercase', letterSpacing: '0.04em'
+            }}>
+              {s.label}
             </div>
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Project Name
-            </label>
-            <input
-              className="input"
-              placeholder="e.g. checkout-api"
-              value={project}
-              onChange={e => setProject(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-        </div>
+        ))}
+      </div>
 
-        {/* Simulation Mode Banner */}
+      {error && (
         <div style={{
-          marginBottom: 14, padding: '8px 12px', borderRadius: 7,
-          background: 'var(--feuji-amber-glow)', border: '1px solid rgba(242,141,29,0.25)',
-          display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+          background: 'var(--glow-red)', border: '1px solid rgba(230,57,70,0.3)',
+          borderRadius: 8, padding: '12px 16px', marginBottom: 20,
+          color: 'var(--accent-red)', fontSize: 13,
+          display: 'flex', alignItems: 'center', gap: 9,
         }}>
-          <AlertCircle size={13} color="var(--feuji-amber)" style={{ flexShrink: 0 }} />
-          <span style={{ color: 'var(--text-secondary)' }}>
-            <strong style={{ color: 'var(--feuji-amber)' }}>Simulation Mode:</strong> k6/JMeter not installed locally — AI will run a high-fidelity simulation against the target URL with realistic metrics.
-          </span>
+          <AlertCircle size={16} /> {error}
         </div>
+      )}
 
-        {/* Advanced Options */}
-        <button
-          onClick={() => setShowAdvanced(v => !v)}
-          disabled={loading}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 12, display: 'flex',
-            alignItems: 'center', gap: 5, padding: 0, marginBottom: showAdvanced ? 12 : 16,
-            fontFamily: 'inherit', transition: 'color 0.18s',
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
-        >
-          <Settings size={12} />
-          <ChevronDown size={12} style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
-          Advanced options (test tool selection)
-        </button>
-
-        {showAdvanced && (
-          <div style={{ marginBottom: 16, animation: 'fade-in 0.2s ease' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Test Tool
+      {/* STEP 1: CONFIGURE */}
+      {step === 1 && (
+        <div className="animate-fade-in" style={{
+          background: 'rgba(224,64,30,0.01)',
+          border: '1px solid var(--border)',
+          borderRadius: 10, padding: 28,
+          boxShadow: 'var(--shadow-sm)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: 'linear-gradient(135deg, var(--feuji-red), var(--feuji-amber))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 20px rgba(224,64,30,0.25)', flexShrink: 0,
+            }}>
+              <Wand2 size={20} color="white" />
             </div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {TOOLS.map(t => (
-                <button key={t.value} onClick={() => setTool(t.value)} disabled={loading}
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 3 }}>Scenario Setup</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                Describe what real-world events or APIs you want to performance test.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ position: 'relative', marginBottom: 14 }}>
+            <textarea
+              ref={textareaRef}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder={EXAMPLE_SCENARIOS[placeholderIdx]}
+              disabled={parsing}
+              className="input"
+              style={{
+                minHeight: 110, padding: '14px 16px', borderRadius: 8,
+                fontSize: 14, lineHeight: 1.6, resize: 'none',
+                border: description ? '1px solid rgba(224,64,30,0.45)' : undefined,
+                boxShadow: description ? '0 0 0 3px rgba(224,64,30,0.08)' : undefined,
+              }}
+            />
+            {description && (
+              <div style={{ position: 'absolute', bottom: 9, right: 12, fontSize: 10.5, color: 'var(--text-muted)' }}>
+                {description.length} chars
+              </div>
+            )}
+          </div>
+
+          {/* Example Chips */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>
+              Try an example:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[
+                'Flash sale spike — 1000 users buy iPhone at midnight',
+                'IRCTC Tatkal quota opening — 500 users book simultaneously',
+                'IPL live stream — 50K users tune in at match start',
+                'API stress test — push until system breaks',
+              ].map((ex, i) => (
+                <button key={i} onClick={() => fillExample(ex)} disabled={parsing}
                   style={{
-                    padding: '9px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-                    background: tool === t.value ? 'rgba(224,64,30,0.08)' : 'var(--bg-secondary)',
-                    border: `1px solid ${tool === t.value ? 'var(--feuji-red)' : 'var(--border)'}`,
-                    color: tool === t.value ? 'var(--feuji-red)' : 'var(--text-secondary)',
-                    transition: 'all 0.18s', fontFamily: 'inherit', minWidth: 110,
-                  }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{t.label}</div>
-                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 2 }}>{t.desc}</div>
+                    padding: '4px 11px', borderRadius: 20, fontSize: 11.5, cursor: 'pointer',
+                    background: 'rgba(224,64,30,0.05)', border: '1px solid rgba(224,64,30,0.18)',
+                    color: 'var(--feuji-red)', fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(224,64,30,0.1)'; }}
+                  onMouseLeave={e => { (e.target as HTMLElement).style.background = 'rgba(224,64,30,0.05)'; }}>
+                  {ex}
                 </button>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Parse Preview Button */}
-        {description && url && !parsedScenario && (
-          <button
-            onClick={handleParsePreview}
-            disabled={parsing || loading}
-            style={{
-              width: '100%', padding: '10px', borderRadius: 8, cursor: 'pointer', marginBottom: 8,
-              background: 'rgba(242,141,29,0.08)', border: '1px solid rgba(242,141,29,0.3)',
-              color: 'var(--feuji-amber)', fontFamily: 'inherit', fontSize: 13, fontWeight: 500,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-              transition: 'all 0.18s',
-            }}>
-            {parsing
-              ? <><div className="spinner" style={{ width: 15, height: 15, borderTopColor: 'var(--feuji-amber)' }} /> Parsing scenario with AI...</>
-              : <><Target size={14} /> Preview AI-Parsed Test Configuration</>}
-          </button>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div style={{
-            background: 'var(--glow-red)', border: '1px solid rgba(230,57,70,0.3)',
-            borderRadius: 7, padding: '9px 13px', marginBottom: 12,
-            color: 'var(--accent-red)', fontSize: 13,
-            display: 'flex', alignItems: 'center', gap: 7,
-          }}>
-            <AlertCircle size={14} /> {error}
-          </div>
-        )}
-
-        {/* Launch Button */}
-        <button
-          className="btn btn-primary"
-          onClick={handleStart}
-          disabled={loading || !description || !url}
-          id="launch-test-btn"
-          style={{ width: '100%', justifyContent: 'center', padding: '14px 24px', fontSize: 15, borderRadius: 9, gap: 9 }}
-        >
-          {loading
-            ? <><div className="spinner" style={{ width: 18, height: 18, borderTopColor: 'rgba(255,255,255,0.9)' }} /> Starting AI Pipeline...</>
-            : <><Zap size={17} /> Start Performance Test</>}
-        </button>
-
-        <p style={{ textAlign: 'center', marginTop: 10, color: 'var(--text-muted)', fontSize: 11.5 }}>
-          AI will parse your scenario, generate a test script, run simulation, analyze results, and produce a full diagnostic report.
-        </p>
-      </div>
-
-      {/* Parsed Scenario Preview */}
-      {parsedScenario && !loading && (
-        <div className="card animate-fade-in" style={{ marginTop: 14, border: '1px solid rgba(224,64,30,0.25)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
-            <CheckCircle size={16} color="var(--feuji-red)" />
-            <h3 style={{ fontSize: 14, fontWeight: 600 }}>AI-Parsed Test Configuration</h3>
-            <span className="badge badge-primary" style={{ marginLeft: 'auto' }}>{parsedScenario.app_type}</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
-            {[
-              { label: 'Test Type', value: parsedScenario.scenario_name },
-              { label: 'Peak Users', value: parsedScenario.load_parameters?.peak_vus },
-              { label: 'Duration', value: `${Math.round(((parsedScenario.load_parameters?.ramp_up_duration_sec || 0) + (parsedScenario.load_parameters?.steady_state_duration_sec || 0) + (parsedScenario.load_parameters?.ramp_down_duration_sec || 0)) / 60)}m` },
-            ].map(stat => (
-              <div key={stat.label} style={{
-                padding: '11px 13px', borderRadius: 8,
-                background: 'var(--bg-secondary)', border: '1px solid var(--border)', textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</div>
-                <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--feuji-red)' }}>{stat.value}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-              Inferred Endpoints
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-              {parsedScenario.inferred_endpoints?.slice(0, 6).map((ep: any, i: number) => (
-                <span key={i} className="badge badge-neutral" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                  {ep.method} {ep.path}
+          {/* URL + Project Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <Globe size={11} /> Target URL
                 </span>
-              ))}
+                {urlStatus === 'checking' && (
+                  <span className="status-pill checking"><Loader size={9} style={{ animation: 'spin 0.75s linear infinite' }} /> Checking</span>
+                )}
+                {urlStatus === 'reachable' && (
+                  <span className="status-pill reachable"><CheckCircle size={9} /> Reachable</span>
+                )}
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input"
+                  placeholder="https://your-api.example.com"
+                  value={url}
+                  onChange={e => { setUrl(e.target.value); setShowUrlSuggestions(false); }}
+                  onFocus={() => !url && setShowUrlSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowUrlSuggestions(false), 200)}
+                  type="url"
+                  disabled={parsing}
+                  style={{ border: urlStatus === 'reachable' ? '1px solid rgba(46,168,74,0.4)' : undefined }}
+                />
+                {showUrlSuggestions && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: 8, marginTop: 4, overflow: 'hidden',
+                    boxShadow: 'var(--shadow-lg)',
+                  }}>
+                    {SUGGESTED_URLS.map((s, i) => (
+                      <button key={i}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '9px 12px', background: 'none', border: 'none',
+                          cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => { (e.target as HTMLElement).style.background = 'var(--bg-card-hover)'; }}
+                        onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none'; }}
+                        onMouseDown={() => { setUrl(s.url); setShowUrlSuggestions(false); }}
+                      >
+                        <div style={{ fontSize: 12, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{s.url}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>{s.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 11, color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Project Name
+              </label>
+              <input
+                className="input"
+                placeholder="e.g. user-service"
+                value={project}
+                onChange={e => setProject(e.target.value)}
+                disabled={parsing}
+              />
             </div>
           </div>
 
-          {parsedScenario.risk_areas?.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--feuji-amber)', display: 'flex', alignItems: 'center', gap: 5 }}>
-              <AlertCircle size={12} /> {parsedScenario.risk_areas[0]}
+          {/* Advanced toggle */}
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            disabled={parsing}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: 11.5, display: 'flex',
+              alignItems: 'center', gap: 5, padding: 0, marginBottom: showAdvanced ? 12 : 20,
+              fontFamily: 'inherit',
+            }}
+          >
+            <Settings size={12} />
+            <ChevronDown size={12} style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            Advanced options (test tool selection)
+          </button>
+
+          {showAdvanced && (
+            <div style={{ marginBottom: 20, padding: 12, borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase' }}>
+                Test Tool
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                {TOOLS.map(t => (
+                  <button key={t.value} onClick={() => setTool(t.value)} disabled={parsing}
+                    style={{
+                      padding: '8px 12px', borderRadius: 6, cursor: 'pointer', textAlign: 'left',
+                      background: tool === t.value ? 'rgba(224,64,30,0.08)' : 'var(--bg-card)',
+                      border: `1px solid ${tool === t.value ? 'var(--feuji-red)' : 'var(--border)'}`,
+                      color: tool === t.value ? 'var(--feuji-red)' : 'var(--text-secondary)',
+                      transition: 'all 0.18s', fontFamily: 'inherit',
+                    }}>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>{t.label}</div>
+                    <div style={{ fontSize: 10.5, opacity: 0.7 }}>{t.desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button className="btn btn-primary" onClick={handleStart} disabled={loading}
-              style={{ flex: 1, justifyContent: 'center', padding: '11px' }}>
-              <Play size={15} /> Run This Test
+          {/* Submit */}
+          <button
+            className="btn btn-primary"
+            onClick={handleGenerateScript}
+            disabled={parsing || !description.trim() || !url.trim()}
+            style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: 14.5, borderRadius: 8 }}
+          >
+            {parsing ? (
+              <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Processing & Generating Script...</>
+            ) : (
+              <><Zap size={16} /> Generate Performance Test Script <ArrowRight size={15} /></>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* STEP 2: REVIEW & REFINE */}
+      {step === 2 && (
+        <div className="animate-fade-in" style={{
+          border: '1px solid var(--border)',
+          borderRadius: 10, padding: 24,
+          background: 'var(--bg-card)',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: 'rgba(242,141,29,0.08)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Code size={18} color="var(--feuji-amber)" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: 16, fontWeight: 700 }}>Review Generated Script</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>
+                  Inspect code or refine load parameters using conversational prompts.
+                </p>
+              </div>
+            </div>
+            <span className="badge badge-primary">{tool.toUpperCase()} Script</span>
+          </div>
+
+          {/* Code Area */}
+          <div style={{ position: 'relative', marginBottom: 18 }}>
+            <textarea
+              value={scriptText}
+              onChange={e => setScriptText(e.target.value)}
+              spellCheck={false}
+              style={{
+                width: '100%', height: 320, padding: '14px', borderRadius: 8,
+                background: '#1e1e24', color: '#a9b2c3', border: '1px solid #2d2d35',
+                fontFamily: 'var(--font-mono)', fontSize: 12.5, lineHeight: 1.6,
+                outline: 'none', resize: 'vertical'
+              }}
+            />
+          </div>
+
+          {/* Natural Language Refinement Input */}
+          <div style={{
+            background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+            borderRadius: 8, padding: 14, marginBottom: 20
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase' }}>
+              <Sparkles size={12} color="var(--feuji-amber)" /> Refine Script with AI
+            </label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input"
+                placeholder="e.g., 'add authorization headers', 'change ramp-up to 5m', 'add random think time'..."
+                value={refinementPrompt}
+                onChange={e => setRefinementPrompt(e.target.value)}
+                disabled={isRefining}
+                onKeyDown={e => { if (e.key === 'Enter') handleRefineScript(); }}
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={handleRefineScript}
+                disabled={isRefining || !refinementPrompt.trim()}
+                style={{ padding: '0 16px', gap: 5 }}
+              >
+                {isRefining ? (
+                  <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <>Refine</>
+                )}
+              </button>
+            </div>
+            <p style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 6 }}>
+              AI will automatically apply instructions to the code above, preserving structure and configurations.
+            </p>
+          </div>
+
+          {/* Footer Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+            <button className="btn btn-ghost" onClick={() => setStep(1)} style={{ gap: 6 }}>
+              <ArrowLeft size={14} /> Back
             </button>
-            <button className="btn btn-ghost" onClick={() => setParsedScenario(null)} style={{ padding: '11px 15px' }}>
-              Edit
+            <button className="btn btn-primary" onClick={() => setStep(3)} style={{ gap: 6 }}>
+              Next: Ready to Run <ArrowRight size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3: REVIEW & EXECUTE */}
+      {step === 3 && (
+        <div className="animate-fade-in" style={{
+          border: '1px solid var(--border)',
+          borderRadius: 10, padding: 24,
+          background: 'var(--bg-card)',
+          boxShadow: 'var(--shadow-sm)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: 'rgba(224,64,30,0.08)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Zap size={18} color="var(--feuji-red)" />
+            </div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 700 }}>Ready to Launch</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: 11.5 }}>
+                Finalize and begin your load test execution.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Target URL</div>
+              <div style={{ fontSize: 13, fontWeight: 600, wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>{url}</div>
+            </div>
+            <div style={{ padding: 14, borderRadius: 8, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Execution Tool</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--feuji-red)' }}>{tool.toUpperCase()}</div>
+            </div>
+          </div>
+
+          {parsedScenario && (
+            <div style={{ padding: 14, borderRadius: 8, border: '1px solid rgba(224,64,30,0.15)', background: 'rgba(224,64,30,0.01)', marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Config Summary</span>
+                <span className="badge badge-neutral" style={{ fontSize: 10 }}>{parsedScenario.scenario_name}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>Peak VUs</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{parsedScenario.load_parameters?.peak_vus || 10}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>Warmup</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{parsedScenario.load_parameters?.ramp_up_duration_sec || 0}s</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>SLA p99</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{parsedScenario.sla_targets?.p99_ms || 500}ms</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="btn btn-ghost" onClick={() => setStep(2)} style={{ gap: 6 }} disabled={loading}>
+              <ArrowLeft size={14} /> Back to Editor
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleStart}
+              disabled={loading}
+              style={{ flex: 1, justifyContent: 'center', gap: 8, padding: '12px' }}
+            >
+              {loading ? (
+                <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Booting up test agents...</>
+              ) : (
+                <><Play size={16} /> Run Performance Test</>
+              )}
             </button>
           </div>
         </div>

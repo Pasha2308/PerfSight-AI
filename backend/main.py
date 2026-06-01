@@ -1,4 +1,7 @@
-import asyncio, json, uuid, time
+import sys, asyncio
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+import json, uuid, time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +47,7 @@ class StartTestRequest(BaseModel):
     scenario_type: str  # load, spike, stress, soak, breakpoint
     tool: str = "k6"    # k6, jmeter, gatling, locust
     nl_description: Optional[str] = None  # Natural language scenario description
+    custom_script: Optional[str] = None  # User edited or refined script
 
 class UserAuthRequest(BaseModel):
     email: str
@@ -86,10 +90,21 @@ class NLStartTestRequest(BaseModel):
     target_url: str
     project_name: str
     tool: str = "k6"
+    custom_script: Optional[str] = None
 
 class ChatRequest(BaseModel):
     test_run_id: str
     message: str
+
+class ScriptGenRequest(BaseModel):
+    scenario: dict
+    tool: str = "k6"
+
+class ScriptRefineRequest(BaseModel):
+    script: str
+    instruction: str
+    tool: str = "k6"
+    scenario: Optional[dict] = None
 
 class RetestRequest(BaseModel):
     original_run_id: str
@@ -129,7 +144,18 @@ async def run_full_pipeline(run_id: str, req: StartTestRequest):
 
         # Phase 2: Script Generation Agent
         await ws_send(run_id, {"phase": "scripting", "status": "running", "message": f"✍️ Generating {req.tool.upper()} test script..."})
-        script_result = await run_script_gen_agent(scenario, req.tool)
+        if req.custom_script:
+            script_result = {
+                "tool": req.tool,
+                "script": req.custom_script,
+                "language": req.tool,
+                "scenario_name": scenario.get("scenario_name", "Test"),
+                "estimated_duration_sec": 30,
+                "peak_vus": scenario.get("load_parameters", {}).get("peak_vus", 10),
+                "sla_targets": scenario.get("sla_targets", {}),
+            }
+        else:
+            script_result = await run_script_gen_agent(scenario, req.tool)
         await update_test_run(run_id, {"generated_script": script_result["script"], "status": "executing"})
         await ws_send(run_id, {"phase": "scripting", "status": "done", "data": script_result})
 
@@ -225,6 +251,42 @@ async def parse_scenario(req: NLScenarioRequest):
     )
     return scenario
 
+@app.post("/api/scripts/generate")
+async def generate_script(req: ScriptGenRequest):
+    """Generate a test script for a given scenario config."""
+    result = await run_script_gen_agent(req.scenario, req.tool)
+    return result
+
+@app.post("/api/scripts/refine")
+async def refine_script_endpoint(req: ScriptRefineRequest):
+    """Refine a test script using natural language instructions."""
+    from agents.gemini_client import call_gemini
+    
+    prompt = f"""You are a performance engineering expert. Refine the following {req.tool} test script based on the user's instructions.
+
+ORIGINAL SCRIPT:
+```
+{req.script}
+```
+
+REFINEMENT INSTRUCTION:
+"{req.instruction}"
+
+CONTEXT/SCENARIO (optional):
+{json.dumps(req.scenario) if req.scenario else "None"}
+
+Please modify the script accordingly. Maintain the overall structure of the script, but apply the requested refinements exactly.
+Return ONLY the modified {req.tool} test script, with no explanations, and no markdown fences."""
+
+    refined_code = await call_gemini(prompt, temperature=0.2, task_type="fast")
+    refined_code = refined_code.replace("```javascript", "").replace("```js", "").replace("```python", "").replace("```xml", "").replace("```", "").strip()
+    
+    return {
+        "tool": req.tool,
+        "script": refined_code,
+        "language": req.tool,
+    }
+
 @app.post("/api/tests/start-nl")
 async def start_test_nl(req: NLStartTestRequest):
     """Start a test from a natural language description."""
@@ -248,6 +310,7 @@ async def start_test_nl(req: NLStartTestRequest):
         scenario_type=scenario["scenario_type"],
         tool=req.tool,
         nl_description=req.description,
+        custom_script=req.custom_script,
     )
     # Override scenario step to use NL-parsed scenario
     asyncio.create_task(_run_nl_pipeline(run_id, pipeline_req, scenario))
@@ -264,7 +327,18 @@ async def _run_nl_pipeline(run_id: str, req: StartTestRequest, pre_parsed_scenar
         # Phase 2: Script Generation
         await ws_send(run_id, {"phase": "scripting", "status": "running",
                                "message": f"✍️ Generating {req.tool.upper()} test script for your scenario..."})
-        script_result = await run_script_gen_agent(pre_parsed_scenario, req.tool)
+        if req.custom_script:
+            script_result = {
+                "tool": req.tool,
+                "script": req.custom_script,
+                "language": req.tool,
+                "scenario_name": pre_parsed_scenario.get("scenario_name", "Test"),
+                "estimated_duration_sec": 30,
+                "peak_vus": pre_parsed_scenario.get("load_parameters", {}).get("peak_vus", 10),
+                "sla_targets": pre_parsed_scenario.get("sla_targets", {}),
+            }
+        else:
+            script_result = await run_script_gen_agent(pre_parsed_scenario, req.tool)
         await update_test_run(run_id, {"generated_script": script_result["script"], "status": "executing"})
         await ws_send(run_id, {"phase": "scripting", "status": "done", "data": script_result})
 

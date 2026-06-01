@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useStore } from '../store';
 import {
   CheckCircle, XCircle, AlertTriangle, TrendingUp, TrendingDown, Minus,
-  ChevronDown, ChevronUp, LayoutDashboard, Cpu, Wrench, Code, Eye,
+  ChevronDown, ChevronUp, LayoutDashboard, Cpu, Wrench, Code, Eye, Download,
 } from 'lucide-react';
 import ReactECharts from 'echarts-for-react';
 import MonacoEditor from '@monaco-editor/react';
@@ -56,6 +56,20 @@ export const ReportView: React.FC = () => {
     { key: 'remediation' as const, icon: <Wrench size={13} />, label: 'Remediation' },
     { key: 'script' as const, icon: <Code size={13} />, label: 'Script', show: !!scriptResult },
   ];
+
+  const downloadScript = () => {
+    if (!scriptResult) return;
+    const blob = new Blob([scriptResult.script], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const extension = scriptResult.language === 'jmeter' ? 'jmx' : scriptResult.language === 'python' ? 'py' : 'js';
+    a.download = `load_test_script.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -295,7 +309,14 @@ export const ReportView: React.FC = () => {
                 <h3 style={{ fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Code size={14} /> Generated {scriptResult.tool?.toUpperCase()} Script
                 </h3>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button 
+                    onClick={downloadScript}
+                    className="btn btn-secondary" 
+                    style={{ padding: '2px 8px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Download size={12} /> Download
+                  </button>
                   <span className="badge badge-neutral">{scriptResult.language}</span>
                   <span className="badge badge-warning">{scriptResult.estimated_duration_sec}s duration</span>
                   <span className="badge badge-primary">{scriptResult.peak_vus} peak VUs</span>
