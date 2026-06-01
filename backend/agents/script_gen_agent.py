@@ -44,7 +44,8 @@ REQUIREMENTS:
 5. Configure stages directly at the top level of the options object (do NOT use the 'scenarios' key or nest stages inside it).
 6. Add proper thresholds at the top level of the options object for SLA enforcement. Ensure thresholds use exact k6 syntax, e.g., 'http_req_duration': ['p(99) < {sla.get('p99_ms', 500)}'] (using 'p(99)', NOT 'p99') and 'http_req_failed': ['rate < {float(sla.get('error_rate_pct', 1)) / 100}'] (representing the percentage as a decimal, e.g. 0.01 for 1%).
 7. Add tags for each request group.
-8. Call group() directly as group('name', function() { ... }) (do NOT use http.group; group is imported from 'k6').
+8. Call group() directly as group('name', function() {{ ... }}) (do NOT use http.group; group is imported from 'k6').
+9. MUST start the file with: import http from 'k6/http'; and import {{ sleep, group }} from 'k6';
 
 Return ONLY the complete k6 JavaScript code, no explanation, no markdown fences."""
 

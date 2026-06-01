@@ -19,7 +19,7 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "vertex").lower()
 GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 VERTEX_MODEL_FAST = os.getenv("VERTEX_MODEL_FAST", "gemini-2.5-flash")
-VERTEX_MODEL_REASONING = os.getenv("VERTEX_MODEL_REASONING", "gemini-2.5-pro")
+VERTEX_MODEL_REASONING = os.getenv("VERTEX_MODEL_REASONING", "gemini-2.5-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Groq config

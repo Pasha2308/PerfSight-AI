@@ -251,32 +251,33 @@ Extract these entities and return ONLY valid JSON:
         duration_sec = _parse_duration_to_seconds(description)
 
     if duration_sec:
-        # Calibrate ramp parameters proportionally to user-specified duration
-        ramp_up_sec = max(5, int(duration_sec * 0.15))
-        ramp_down_sec = max(5, int(duration_sec * 0.15))
-        steady_sec = max(5, duration_sec - ramp_up_sec - ramp_down_sec)
+        # Cap duration for fast testing
+        duration_sec = min(duration_sec, 15)
+        ramp_up_sec = max(2, int(duration_sec * 0.15))
+        ramp_down_sec = max(2, int(duration_sec * 0.15))
+        steady_sec = max(2, duration_sec - ramp_up_sec - ramp_down_sec)
     else:
         # Default to short, snappy durations for quick demo/local verification
         if scenario_type == "spike":
-            ramp_up_sec = 5
-            steady_sec = 15
-            ramp_down_sec = 5
+            ramp_up_sec = 2
+            steady_sec = 5
+            ramp_down_sec = 2
         elif scenario_type == "soak":
-            ramp_up_sec = 10
-            steady_sec = 20
-            ramp_down_sec = 5
+            ramp_up_sec = 3
+            steady_sec = 10
+            ramp_down_sec = 2
         elif scenario_type == "stress":
-            ramp_up_sec = 15
-            steady_sec = 5
-            ramp_down_sec = 5
-        elif scenario_type == "breakpoint":
-            ramp_up_sec = 15
-            steady_sec = 5
-            ramp_down_sec = 5
-        else:  # load
             ramp_up_sec = 5
-            steady_sec = 20
-            ramp_down_sec = 5
+            steady_sec = 5
+            ramp_down_sec = 2
+        elif scenario_type == "breakpoint":
+            ramp_up_sec = 5
+            steady_sec = 5
+            ramp_down_sec = 2
+        else:  # load
+            ramp_up_sec = 2
+            steady_sec = 10
+            ramp_down_sec = 2
 
     # Build final scenario config
     benchmarks = template["industry_benchmarks"]
@@ -305,7 +306,7 @@ Return ONLY valid JSON with this structure:
   "user_journey": "Step-by-step description of user behavior during this scenario"
 }}"""
 
-    endpoint_raw = await call_gemini(endpoint_prompt, temperature=0.2, task_type="reasoning")
+    endpoint_raw = await call_gemini(endpoint_prompt, temperature=0.2, task_type="fast")
     endpoint_data = {}
     try:
         es = endpoint_raw.find("{")
