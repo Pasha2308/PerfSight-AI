@@ -17,13 +17,6 @@
 
 ---
 
-## 🎥 Demo Video
-
-> **[Insert Demo Video Link Here]**
-> Watch our full walkthrough of PerfSight AI, showcasing the Natural Language parsing, live execution, dynamic AI reporting, and conversational QA agent!
-
----
-
 ## 📋 Table of Contents
 
 - [Problem Statement](#-problem-statement)
