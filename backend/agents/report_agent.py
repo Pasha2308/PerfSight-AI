@@ -1,6 +1,12 @@
 import json
 from typing import Dict, Any
-from agents.gemini_client import call_gemini
+from pydantic import BaseModel, Field
+
+class ReportOutput(BaseModel):
+    executive_summary: str = Field(description="Write a concise executive summary (3-4 sentences) that states the overall test verdict (Pass/Fail), describes the most critical finding in plain business language, states the business impact, and gives one clear action item. Plain English, no technical jargon.")
+    technical_rca: str = Field(description="Write a technical RCA that includes what happened (timeline of events), why it happened (root cause with evidence), how it was detected (which metrics revealed the issue), and which components were affected. Use specific numbers.")
+    remediation_steps: str = Field(description="For each root cause identified, provide a specific, actionable fix with example config values where relevant, estimated fix effort in hours, expected improvement, and how to validate the fix. Format as a numbered list with headers.")
+    key_observations: str = Field(description="List 5 key observations as bullet points, starting each with a relevant emoji. Each observation should be a single, specific, data-backed insight.")
 
 async def run_report_agent(findings: Dict[str, Any], scenario: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -20,16 +26,15 @@ async def run_report_agent(findings: Dict[str, Any], scenario: Dict[str, Any]) -
 SCENARIO: {scenario_str}
 FINDINGS: {findings_str}
 
-Please generate a comprehensive JSON report containing exactly these four keys:
-"executive_summary": "Write a concise executive summary (3-4 sentences) that states the overall test verdict (Pass/Fail), describes the most critical finding in plain business language, states the business impact, and gives one clear action item. Plain English, no technical jargon.",
-"technical_rca": "Write a technical RCA that includes what happened (timeline of events), why it happened (root cause with evidence), how it was detected (which metrics revealed the issue), and which components were affected. Use specific numbers.",
-"remediation_steps": "For each root cause identified, provide a specific, actionable fix with example config values where relevant, estimated fix effort in hours, expected improvement, and how to validate the fix. Format as a numbered list with headers.",
-"key_observations": "List 5 key observations as bullet points, starting each with a relevant emoji. Each observation should be a single, specific, data-backed insight."
-
-Return ONLY valid JSON.
+Please generate a comprehensive report.
 """
     from agents.gemini_client import call_gemini_json
-    report_data = await call_gemini_json(prompt, temperature=0.3, task_type="reasoning")
+    report_data = await call_gemini_json(
+        prompt, 
+        temperature=0.3, 
+        task_type="reasoning",
+        response_schema=ReportOutput
+    )
 
     # Fallback strings in case JSON parsing fails
     exec_summary = report_data.get("executive_summary", "Executive summary not available.")

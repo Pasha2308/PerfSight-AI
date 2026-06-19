@@ -68,6 +68,7 @@ async def call_gemini(
     temperature: float = 0.7,
     task_type: str = "fast",
     max_output_tokens: int = 8192,
+    response_schema: Optional[Any] = None,
 ) -> str:
     """
     Unified LLM entry point. Routes requests based on LLM_PROVIDER setting.
@@ -89,6 +90,8 @@ async def call_gemini(
             "temperature": temperature,
             "max_tokens": max_output_tokens,
         }
+        if response_schema:
+            payload["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -114,6 +117,8 @@ async def call_gemini(
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
         }
+        if response_schema:
+            payload["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
@@ -129,10 +134,15 @@ async def call_gemini(
         client = _get_vertex_client()
         from google.genai.types import GenerateContentConfig
 
-        config = GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-        )
+        config_kwargs = {
+            "temperature": temperature,
+            "max_output_tokens": max_output_tokens,
+        }
+        if response_schema:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_schema"] = response_schema
+            
+        config = GenerateContentConfig(**config_kwargs)
 
         retries = 3
         for attempt in range(retries):
@@ -170,11 +180,12 @@ async def call_gemini_json(
     prompt: str,
     temperature: float = 0.3,
     task_type: str = "fast",
+    response_schema: Optional[Any] = None,
 ) -> dict:
     """
     Call the active LLM router and parse response as JSON.
     """
-    raw = await call_gemini(prompt, temperature=temperature, task_type=task_type)
+    raw = await call_gemini(prompt, temperature=temperature, task_type=task_type, response_schema=response_schema)
 
     # Strip markdown fences
     raw = raw.replace("```json", "").replace("```", "").strip()

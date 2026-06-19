@@ -1,6 +1,11 @@
 import json
-from .gemini_client import call_gemini
+from .gemini_client import call_gemini_json
 from typing import Dict, Any
+from pydantic import BaseModel, Field
+
+class ScriptOutput(BaseModel):
+    script: str = Field(description="The complete, syntax-valid performance test script code. Do not include markdown fences.")
+    explanation: str = Field(description="A brief explanation of the script and what it does.")
 
 async def run_script_gen_agent(scenario: Dict[str, Any], tool: str = "k6") -> Dict[str, Any]:
     """
@@ -46,12 +51,9 @@ REQUIREMENTS:
 7. Add tags for each request group.
 8. Call group() directly as group('name', function() {{ ... }}) (do NOT use http.group; group is imported from 'k6').
 9. MUST start the file with: import http from 'k6/http'; and import {{ sleep, group }} from 'k6';
-
-Return ONLY the complete k6 JavaScript code, no explanation, no markdown fences."""
-
-        script = await call_gemini(prompt, temperature=0.2, task_type="reasoning")
-        # Clean up markdown fences if present
-        script = script.replace("```javascript", "").replace("```js", "").replace("```", "").strip()
+"""
+        response_data = await call_gemini_json(prompt, temperature=0.2, task_type="reasoning", response_schema=ScriptOutput)
+        script = response_data.get("script", "")
 
     elif tool == "jmeter":
         prompt = f"""Generate a complete JMeter test plan in JMX XML format for:
@@ -59,10 +61,9 @@ SCENARIO: {scenario_name}
 TARGET: {target_url}
 ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users, {load_params.get('steady_state_duration_sec', 300)}s duration
-
-Return ONLY valid JMX XML, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2, task_type="reasoning")
-        script = script.replace("```xml", "").replace("```", "").strip()
+"""
+        response_data = await call_gemini_json(prompt, temperature=0.2, task_type="reasoning", response_schema=ScriptOutput)
+        script = response_data.get("script", "")
 
     elif tool == "gatling":
         prompt = f"""Generate a complete Gatling Scala simulation for:
@@ -70,10 +71,9 @@ SCENARIO: {scenario_name}
 TARGET: {target_url}
 ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users, {load_params.get('steady_state_duration_sec', 300)}s duration
-
-Return ONLY valid Scala code, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2, task_type="reasoning")
-        script = script.replace("```scala", "").replace("```", "").strip()
+"""
+        response_data = await call_gemini_json(prompt, temperature=0.2, task_type="reasoning", response_schema=ScriptOutput)
+        script = response_data.get("script", "")
 
     elif tool == "locust":
         prompt = f"""Generate a complete Locust Python test script for:
@@ -81,10 +81,9 @@ SCENARIO: {scenario_name}
 TARGET: {target_url}
 ENDPOINTS: {endpoints_json}
 LOAD: {load_params.get('peak_vus', 100)} users
-
-Return ONLY valid Python code, no explanation."""
-        script = await call_gemini(prompt, temperature=0.2, task_type="reasoning")
-        script = script.replace("```python", "").replace("```", "").strip()
+"""
+        response_data = await call_gemini_json(prompt, temperature=0.2, task_type="reasoning", response_schema=ScriptOutput)
+        script = response_data.get("script", "")
 
     else:
         script = f"# Tool '{tool}' not supported. Please select: k6, jmeter, gatling, locust"

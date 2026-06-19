@@ -142,6 +142,24 @@ npm run dev
 docker-compose up --build
 ```
 
+### Option D: Command Line Interface (CLI)
+A fully functional CLI is available to trigger and monitor tests without using the web UI.
+```bash
+cd backend
+python cli.py start --project MyProject --url https://example.com --tool k6
+python cli.py status <run_id>
+python cli.py report <run_id>
+python cli.py chat <run_id> "What was the bottleneck?"
+```
+
+### 🔌 Model Context Protocol (MCP) Server
+PerfSight AI includes a native MCP Server, allowing other AI agents (like Claude Desktop) to trigger tests and analyze results directly!
+```bash
+cd backend
+# Starts the FastMCP server exposing PerfSight tools
+python mcp_server.py
+```
+
 ### 🔑 Default Login Credentials
 Open **http://localhost:5173** and log in to explore the demo:
 
