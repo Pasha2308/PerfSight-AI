@@ -5,6 +5,7 @@ import json, uuid, time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -20,6 +21,9 @@ from agents.correlation_agent import analyze_jmx_for_correlation, convert_har_to
 from agents.import_agent import analyze_jtl_file, analyze_k6_json, analyze_csv_results
 from db.database import create_user, get_user_by_email
 from auth import get_password_hash, verify_password, create_access_token
+from browser_qa import ARTIFACTS_DIR, load_report, run_browser_qa
+from coupon_qa import ARTIFACTS_DIR as COUPON_ARTIFACTS_DIR, discover_coupon_offers, load_coupon_report, run_coupon_qa
+from starlette.concurrency import run_in_threadpool
 
 # Active WebSocket connections
 ws_connections: dict[str, WebSocket] = {}
@@ -30,6 +34,10 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="PerfSight AI", version="1.0.0", lifespan=lifespan)
+ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/browser-qa/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="browser-qa-artifacts")
+COUPON_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/coupon-qa/artifacts", StaticFiles(directory=str(COUPON_ARTIFACTS_DIR)), name="coupon-qa-artifacts")
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,6 +118,19 @@ class RetestRequest(BaseModel):
     original_run_id: str
     scenario_type: Optional[str] = None
     peak_vus: Optional[int] = None
+
+class BrowserQARequest(BaseModel):
+    url: str
+    check_links: bool = True
+
+class CouponSelection(BaseModel):
+    goid: str
+    product_query: Optional[str] = None
+
+class CouponQARequest(BaseModel):
+    category: str
+    selected: List[CouponSelection]
+    product_query: str
 
 # --- WebSocket ---
 
@@ -453,6 +474,29 @@ async def retest(req: RetestRequest):
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "PerfSight AI", "version": "2.0.0", "engine": "Vertex AI"}
+
+@app.post("/api/browser-qa/run")
+async def browser_qa_run(request: BrowserQARequest):
+    """Run a local headless browser health check and save its evidence."""
+    return await run_in_threadpool(run_browser_qa, request.url, request.check_links)
+
+@app.get("/api/browser-qa/reports/{run_id}")
+async def browser_qa_report(run_id: str):
+    return load_report(run_id)
+
+@app.get("/api/coupon-qa/offers/{category}")
+async def coupon_qa_discover(category: str):
+    """Discover current GrabOn offers for the selected category."""
+    return await run_in_threadpool(discover_coupon_offers, category)
+
+@app.post("/api/coupon-qa/run")
+async def coupon_qa_run(request: CouponQARequest):
+    """Run checkout probes in a worker thread so browser waits do not block the API loop."""
+    return await run_in_threadpool(run_coupon_qa, request.category, [item.model_dump() for item in request.selected], request.product_query)
+
+@app.get("/api/coupon-qa/reports/{run_id}")
+async def coupon_qa_report(run_id: str):
+    return load_coupon_report(run_id)
 
 # ─── JMeter Correlation Agent ─────────────────────────────────────
 

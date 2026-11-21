@@ -121,6 +121,7 @@ This runs the fully automated 1-click installer:
 # 1. Backend
 cd backend
 pip install -r requirements.txt
+python -m playwright install chromium            # One-time local browser setup for Browser QA
 python seed_data.py                          
 uvicorn main:app --host 127.0.0.1 --port 8000
 
@@ -129,6 +130,28 @@ cd frontend
 npm install
 npm run dev
 ```
+
+### Core Browser QA
+Open **Tools → Browser QA**, enter an HTTP or HTTPS URL, and run the check. The local Playwright runner records navigation status, title/content checks, JavaScript console and page errors, and (optionally) up to 50 HTTP links. It saves a screenshot and JSON report under `backend/artifacts/browser-qa/<run-id>/`; the response links to both. This is a bounded page check, not a site-wide crawler. No AI key or paid service is used. Install Chromium once with `python -m playwright install chromium` after installing backend requirements.
+
+### GrabOn Coupon QA
+Open **Tools → Coupon QA**, choose Fashion or Electronics, and discover the current GrabOn offers. Select offers and enter a product query for each one. The local runner follows GrabOn's offer redirect, finds a matching product, adds one item to a separate test cart, applies the code, and checks the retailer checkout summary. It stops before sign-in, personal details, shipping, or payment. A coupon is confirmed only when checkout displays the code with a positive discount; a GrabOn “verified” label alone is not proof. Screenshots and a JSON report are saved under `backend/artifacts/coupon-qa/<run-id>/`.
+
+The checkout adapter currently supports Shopify stores for boAt, Levi's, The Bear House, and Hammer. Other stores can still be discovered and browsed, but their checkout result is reported as unsupported rather than guessed. Products, offer terms, and retailer pages change over time, so run the check again to verify a current listing. These browser checks use free local Playwright and retailer pages; they do not require an AI key or a paid service.
+
+### QA API and Reports
+
+The frontend uses these local FastAPI routes:
+
+| Method | Route | Purpose |
+|---|---|---|
+| `POST` | `/api/browser-qa/run` | Check a URL; JSON body: `{"url":"https://example.com","check_links":true}` |
+| `GET` | `/api/browser-qa/reports/{run_id}` | Read a saved browser QA report |
+| `GET` | `/api/coupon-qa/offers/{fashion\|electronics}` | Discover live GrabOn offers and capture the listing |
+| `POST` | `/api/coupon-qa/run` | Test selected offers through checkout; JSON body includes `category`, `selected` (`goid` and optional per-offer `product_query`), and default `product_query` |
+| `GET` | `/api/coupon-qa/reports/{run_id}` | Read a saved coupon QA report |
+
+Evidence paths in each report point to the matching `/api/.../artifacts/...` image route. Coupon verdicts distinguish confirmed discounts from stale offers, unsupported stores, retailer blocks, product/cart failures, and codes not confirmed at checkout.
 
 ### Option C: Docker
 ```bash

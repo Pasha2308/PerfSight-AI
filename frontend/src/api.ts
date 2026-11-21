@@ -145,6 +145,15 @@ export const ciQualityGate = (data: {
 
 export const healthCheck = () => API.get('/api/health').then(r => r.data);
 
+export const runBrowserQA = (url: string, check_links = true) =>
+  API.post('/api/browser-qa/run', { url, check_links }, { timeout: 300000 }).then(r => r.data);
+
+export const discoverCouponOffers = (category: 'fashion' | 'electronics') =>
+  API.get(`/api/coupon-qa/offers/${category}`, { timeout: 90000 }).then(r => r.data);
+
+export const runCouponQA = (category: 'fashion' | 'electronics', selected: { goid: string; product_query?: string }[], product_query: string) =>
+  API.post('/api/coupon-qa/run', { category, selected, product_query }, { timeout: 600000 }).then(r => r.data);
+
 // ─── LLM Config Test ─────────────────────────────────────────────
 
 export const testLLMConnection = (provider: string, model: string) =>

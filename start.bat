@@ -5,7 +5,7 @@ echo ========================================================
 
 echo [1/3] Starting Backend API...
 cd backend
-start cmd /k "pip install -r requirements.txt && uvicorn main:app --host 127.0.0.1 --port 8000"
+start cmd /k "pip install -r requirements.txt && python -m playwright install chromium && uvicorn main:app --host 127.0.0.1 --port 8000"
 
 echo [2/3] Seeding Enterprise Demo Data...
 timeout /t 5 >nul

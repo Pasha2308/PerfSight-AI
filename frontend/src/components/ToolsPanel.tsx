@@ -1,12 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { correlateJmx, correlateHar, optimizeJmx, importJtl, importK6 } from '../api';
 import { TrafficAnalyzer } from './TrafficAnalyzer';
+import { BrowserQAPanel } from './BrowserQAPanel';
+import { CouponQAPanel } from './CouponQAPanel';
 import {
   Upload, FileCode, Zap, CheckCircle, AlertTriangle,
   Download, Shield, ArrowRight, FileText, BarChart2, Activity,
 } from 'lucide-react';
 
-type Mode = 'correlate' | 'import' | 'optimize' | 'traffic';
+type Mode = 'correlate' | 'import' | 'optimize' | 'traffic' | 'browser' | 'coupon';
 
 interface CorrelationResult {
   correlations_found: any[];
@@ -95,11 +97,43 @@ export function ToolsPanel() {
   };
 
   const MODES = [
+    { key: 'coupon' as Mode, icon: <Zap size={13} />, label: 'Coupon QA', desc: 'Validate GrabOn offers with retailer evidence' },
+    { key: 'browser' as Mode, icon: <Activity size={13} />, label: 'Browser QA', desc: 'Check URLs, browser errors, broken links & screenshots' },
     { key: 'traffic' as Mode, icon: <Activity size={13} />, label: 'Traffic → Script', desc: 'Upload logs/traces → AI generates realistic scripts' },
     { key: 'correlate' as Mode, icon: <Zap size={13} />, label: 'JMeter Correlator', desc: 'Auto-correlate dynamic values from JMX or HAR' },
     { key: 'import' as Mode, icon: <Upload size={13} />, label: 'Import Results', desc: 'Analyze JTL, k6 JSON, or CSV test output' },
     { key: 'optimize' as Mode, icon: <Shield size={13} />, label: 'JMX Optimizer', desc: 'Best practice review and quality scoring' },
   ];
+
+  if (mode === 'coupon') return (
+    <div>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap' }}>
+        {MODES.map(tab => (
+          <button key={tab.key} onClick={() => { setMode(tab.key); setFile(null); clearResults(); }}
+            style={{ flex: '0 0 auto', padding: '11px 13px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', background: mode === tab.key ? 'linear-gradient(135deg, rgba(224,64,30,0.08), rgba(242,141,29,0.05))' : 'var(--bg-secondary)', border: `1px solid ${mode === tab.key ? 'var(--feuji-red)' : 'var(--border)'}`, fontFamily: 'inherit' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: mode === tab.key ? 'var(--feuji-red)' : 'var(--text-primary)', fontWeight: 600, fontSize: 12.5, marginBottom: 2 }}>{tab.icon} {tab.label}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.4 }}>{tab.desc}</div>
+          </button>
+        ))}
+      </div>
+      <CouponQAPanel />
+    </div>
+  );
+
+  if (mode === 'browser') return (
+    <div>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap' }}>
+        {MODES.map(tab => (
+          <button key={tab.key} onClick={() => { setMode(tab.key); setFile(null); clearResults(); }}
+            style={{ flex: '0 0 auto', padding: '11px 13px', borderRadius: 8, cursor: 'pointer', textAlign: 'left', background: mode === tab.key ? 'linear-gradient(135deg, rgba(224,64,30,0.08), rgba(242,141,29,0.05))' : 'var(--bg-secondary)', border: `1px solid ${mode === tab.key ? 'var(--feuji-red)' : 'var(--border)'}`, fontFamily: 'inherit' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: mode === tab.key ? 'var(--feuji-red)' : 'var(--text-primary)', fontWeight: 600, fontSize: 12.5, marginBottom: 2 }}>{tab.icon} {tab.label}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', lineHeight: 1.4 }}>{tab.desc}</div>
+          </button>
+        ))}
+      </div>
+      <BrowserQAPanel />
+    </div>
+  );
 
   if (mode === 'traffic') return (
     <div>
