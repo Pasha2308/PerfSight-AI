@@ -3,7 +3,7 @@ PerfSight AI — Multi-LLM Router
 Supports: Google Gemini (Vertex AI or API key), OpenAI, Anthropic Claude
 
 The active provider is determined by request headers:
-  X-LLM-Provider: google | openai | anthropic
+  X-LLM-Provider: google | openai | anthropic | ollama
   X-LLM-Key:      <api_key>
   X-LLM-Model:    <model_id>
 
@@ -12,10 +12,17 @@ Falls back to environment-configured Vertex AI if no headers provided.
 import os
 import json
 import asyncio
+from pathlib import Path
+import httpx
 from typing import Optional
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# Load the project-root .env (the documented local configuration) and the
+# backend .env used by existing installs, without overwriting shell variables.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env", override=False)
+load_dotenv(PROJECT_ROOT / "backend" / ".env", override=False)
+load_dotenv(PROJECT_ROOT / "backend" / ".env.local", override=False)
 
 # ─── Default (Vertex AI / Gemini) config ─────────────────────────
 GCP_PROJECT = os.getenv("GCP_PROJECT_ID", "")
@@ -23,6 +30,11 @@ GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")
 DEFAULT_MODEL_FAST = os.getenv("VERTEX_MODEL_FAST", "gemini-2.5-flash")
 DEFAULT_MODEL_REASONING = os.getenv("VERTEX_MODEL_REASONING", "gemini-2.5-pro")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEY_2 = os.getenv("GROQ_API_KEY_2", "")
+GROQ_API_KEY_3 = os.getenv("GROQ_API_KEY_3", "")
+GROQ_API_KEYS = [key for key in (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3) if key]
+GROQ_MODEL_FAST = os.getenv("GROQ_MODEL_FAST", "openai/gpt-oss-20b")
 USE_VERTEX = bool(GCP_PROJECT) and GEMINI_API_KEY in ("", "your_gemini_api_key_here")
 
 _gemini_client = None
@@ -72,16 +84,40 @@ async def _call_openai_compatible(
     temperature: float,
     max_output_tokens: int,
     base_url: Optional[str] = None,
+    json_mode: bool = False,
 ) -> str:
-    import openai as oai
-    client = oai.AsyncOpenAI(api_key=api_key, base_url=base_url)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        max_tokens=max_output_tokens,
-    )
-    return response.choices[0].message.content.strip()
+    endpoint = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/chat/completions"
+    token_limit_field = "max_completion_tokens" if base_url == "https://api.groq.com/openai/v1" else "max_tokens"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": temperature,
+        token_limit_field: max_output_tokens,
+    }
+    if json_mode and base_url == "https://api.groq.com/openai/v1":
+        payload["response_format"] = {"type": "json_object"}
+        if model.startswith("openai/gpt-oss-"):
+            payload["reasoning_effort"] = "low"
+            payload["include_reasoning"] = False
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.post(
+            endpoint,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        if response.is_error and base_url == "https://api.groq.com/openai/v1":
+            try:
+                provider_message = str(response.json().get("error", {}).get("message", "request rejected"))
+            except (ValueError, AttributeError):
+                provider_message = "request rejected"
+            provider_message = provider_message.replace(api_key, "[key hidden]")[:220]
+            if response.status_code == 429:
+                retry_after = response.headers.get("retry-after", "")
+                suffix = f" Retry after {retry_after} seconds." if retry_after.isdigit() else " Wait for the Groq limit window to reset."
+                raise RuntimeError(f"Groq rate limit reached: {provider_message}.{suffix}")
+            raise RuntimeError(f"Groq rejected the request ({response.status_code}): {provider_message}")
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
 
 
 async def _call_anthropic(
@@ -110,6 +146,8 @@ async def call_llm(
     provider: str = "",
     api_key: str = "",
     model: str = "",
+    allow_fallback: bool = True,
+    json_mode: bool = False,
 ) -> str:
     """
     Unified LLM call — routes to the right provider.
@@ -119,7 +157,7 @@ async def call_llm(
     """
     # Determine provider + model
     effective_provider = provider or "google"
-    effective_key = api_key or GEMINI_API_KEY
+    effective_key = api_key or (GROQ_API_KEY if effective_provider == "groq" else GEMINI_API_KEY)
 
     if not model:
         if task_type == "reasoning":
@@ -139,7 +177,7 @@ async def call_llm(
         elif effective_provider == "openrouter":
             return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://openrouter.ai/api/v1")
         elif effective_provider == "groq":
-            return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://api.groq.com/openai/v1")
+            return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://api.groq.com/openai/v1", json_mode=json_mode)
         elif effective_provider == "deepseek":
             return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://api.deepseek.com")
         elif effective_provider == "mistral":
@@ -152,13 +190,28 @@ async def call_llm(
             return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://integrate.api.nvidia.com/v1")
         elif effective_provider == "cohere":
             return await _call_openai_compatible(prompt, effective_key, effective_model, temperature, max_output_tokens, base_url="https://api.cohere.com/v1")
+        elif effective_provider == "ollama":
+            # Ollama's OpenAI-compatible endpoint keeps model planning local and free.
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                response = await client.post(
+                    "http://127.0.0.1:11434/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {effective_key or 'ollama'}"},
+                    json={
+                        "model": effective_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": temperature,
+                        "max_tokens": max_output_tokens,
+                    },
+                )
+                response.raise_for_status()
+                return response.json()["choices"][0]["message"]["content"].strip()
         else:
             # Default: Google Gemini (Vertex AI or API key)
             return await _call_gemini(prompt, effective_key if provider == "google" else "", effective_model, temperature, max_output_tokens)
     except Exception as e:
         print(f"[LLM] Error from {effective_provider}/{effective_model}: {e}")
         # Fallback to default Vertex AI if custom key fails
-        if effective_provider != "google" or api_key:
+        if allow_fallback and (effective_provider != "google" or api_key):
             print("[LLM] Falling back to default Vertex AI...")
             return await _call_gemini(prompt, "", DEFAULT_MODEL_FAST if task_type == "fast" else DEFAULT_MODEL_REASONING, temperature, max_output_tokens)
         raise
@@ -171,12 +224,23 @@ async def call_llm_json(
     provider: str = "",
     api_key: str = "",
     model: str = "",
+    allow_fallback: bool = True,
+    max_output_tokens: int = 8192,
 ) -> dict:
     """
     Call LLM and parse JSON response. Handles markdown code fences.
     """
-    raw = await call_llm(prompt, temperature=temperature, task_type=task_type,
-                         provider=provider, api_key=api_key, model=model)
+    try:
+        raw = await call_llm(prompt, temperature=temperature, task_type=task_type, max_output_tokens=max_output_tokens,
+                             provider=provider, api_key=api_key, model=model, allow_fallback=allow_fallback, json_mode=True)
+    except RuntimeError as exc:
+        # Groq's strict JSON mode can reject a model generation before returning
+        # content. Retry once without the response_format constraint; the prompt
+        # still requests JSON, and the parser below validates the returned value.
+        if provider != "groq" or "Failed to validate JSON" not in str(exc):
+            raise
+        raw = await call_llm(prompt, temperature=temperature, task_type=task_type, max_output_tokens=max_output_tokens,
+                             provider=provider, api_key=api_key, model=model, allow_fallback=allow_fallback, json_mode=False)
     raw = raw.replace("```json", "").replace("```", "").strip()
     try:
         start = raw.find("{"); end = raw.rfind("}") + 1
@@ -199,7 +263,7 @@ async def test_connection(provider: str, api_key: str, model: str) -> bool:
         result = await call_llm(
             "Reply with exactly: OK",
             temperature=0.0, task_type="fast", max_output_tokens=10,
-            provider=provider, api_key=api_key, model=model,
+            provider=provider, api_key=api_key, model=model, allow_fallback=False,
         )
         return "OK" in result or len(result) > 0
     except Exception as e:

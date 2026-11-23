@@ -3,7 +3,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 import json, uuid, time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ from agents.import_agent import analyze_jtl_file, analyze_k6_json, analyze_csv_r
 from db.database import create_user, get_user_by_email
 from auth import get_password_hash, verify_password, create_access_token
 from browser_qa import ARTIFACTS_DIR, load_report, run_browser_qa
-from coupon_qa import ARTIFACTS_DIR as COUPON_ARTIFACTS_DIR, discover_coupon_offers, load_coupon_report, run_coupon_qa
+from browser_agent import ARTIFACTS_DIR as AI_QA_ARTIFACTS_DIR, get_run as get_ai_qa_run, resume_run as resume_ai_qa_run, start_run as start_ai_qa_run
 from starlette.concurrency import run_in_threadpool
 
 # Active WebSocket connections
@@ -36,12 +36,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="PerfSight AI", version="1.0.0", lifespan=lifespan)
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/api/browser-qa/artifacts", StaticFiles(directory=str(ARTIFACTS_DIR)), name="browser-qa-artifacts")
-COUPON_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/api/coupon-qa/artifacts", StaticFiles(directory=str(COUPON_ARTIFACTS_DIR)), name="coupon-qa-artifacts")
+AI_QA_ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/ai-qa/artifacts", StaticFiles(directory=str(AI_QA_ARTIFACTS_DIR)), name="ai-qa-artifacts")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -123,14 +128,11 @@ class BrowserQARequest(BaseModel):
     url: str
     check_links: bool = True
 
-class CouponSelection(BaseModel):
-    goid: str
-    product_query: Optional[str] = None
+class AIQARunRequest(BaseModel):
+    scenario: str
 
-class CouponQARequest(BaseModel):
-    category: str
-    selected: List[CouponSelection]
-    product_query: str
+class AIQAResumeRequest(BaseModel):
+    values: dict[str, str]
 
 # --- WebSocket ---
 
@@ -484,19 +486,24 @@ async def browser_qa_run(request: BrowserQARequest):
 async def browser_qa_report(run_id: str):
     return load_report(run_id)
 
-@app.get("/api/coupon-qa/offers/{category}")
-async def coupon_qa_discover(category: str):
-    """Discover current GrabOn offers for the selected category."""
-    return await run_in_threadpool(discover_coupon_offers, category)
+@app.post("/api/ai-qa/runs")
+async def ai_qa_start(
+    request: AIQARunRequest,
+    x_llm_provider: str = Header(default=""),
+    x_llm_key: str = Header(default=""),
+    x_llm_model: str = Header(default=""),
+):
+    """Start a general scenario-driven browser run using the tester's configured model."""
+    return start_ai_qa_run(request.scenario, x_llm_provider, x_llm_key, x_llm_model)
 
-@app.post("/api/coupon-qa/run")
-async def coupon_qa_run(request: CouponQARequest):
-    """Run checkout probes in a worker thread so browser waits do not block the API loop."""
-    return await run_in_threadpool(run_coupon_qa, request.category, [item.model_dump() for item in request.selected], request.product_query)
+@app.get("/api/ai-qa/runs/{run_id}")
+async def ai_qa_status(run_id: str):
+    return get_ai_qa_run(run_id)
 
-@app.get("/api/coupon-qa/reports/{run_id}")
-async def coupon_qa_report(run_id: str):
-    return load_coupon_report(run_id)
+@app.post("/api/ai-qa/runs/{run_id}/resume")
+async def ai_qa_resume(run_id: str, request: AIQAResumeRequest):
+    """Resume a paused run with only the fields explicitly requested by the agent."""
+    return resume_ai_qa_run(run_id, request.values)
 
 # ─── JMeter Correlation Agent ─────────────────────────────────────
 
@@ -708,9 +715,9 @@ class LLMTestRequest(BaseModel):
 @app.post("/api/llm/test")
 async def test_llm_connection(
     req: LLMTestRequest,
-    x_llm_provider: Optional[str] = None,
-    x_llm_key: Optional[str] = None,
-    x_llm_model: Optional[str] = None,
+    x_llm_provider: Optional[str] = Header(default=None),
+    x_llm_key: Optional[str] = Header(default=None),
+    x_llm_model: Optional[str] = Header(default=None),
 ):
     """Test if the user's LLM API key works."""
     from fastapi import Request

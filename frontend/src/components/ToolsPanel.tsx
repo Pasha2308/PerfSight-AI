@@ -2,13 +2,13 @@ import React, { useState, useCallback } from 'react';
 import { correlateJmx, correlateHar, optimizeJmx, importJtl, importK6 } from '../api';
 import { TrafficAnalyzer } from './TrafficAnalyzer';
 import { BrowserQAPanel } from './BrowserQAPanel';
-import { CouponQAPanel } from './CouponQAPanel';
+import { AIQAPanel } from './AIQAPanel';
 import {
   Upload, FileCode, Zap, CheckCircle, AlertTriangle,
   Download, Shield, ArrowRight, FileText, BarChart2, Activity,
 } from 'lucide-react';
 
-type Mode = 'correlate' | 'import' | 'optimize' | 'traffic' | 'browser' | 'coupon';
+type Mode = 'correlate' | 'import' | 'optimize' | 'traffic' | 'browser' | 'ai';
 
 interface CorrelationResult {
   correlations_found: any[];
@@ -32,7 +32,7 @@ interface ImportResult {
 }
 
 export function ToolsPanel() {
-  const [mode, setMode] = useState<Mode>('correlate');
+  const [mode, setMode] = useState<Mode>('ai');
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [correlationResult, setCorrelationResult] = useState<CorrelationResult | null>(null);
@@ -97,7 +97,7 @@ export function ToolsPanel() {
   };
 
   const MODES = [
-    { key: 'coupon' as Mode, icon: <Zap size={13} />, label: 'Coupon QA', desc: 'Validate GrabOn offers with retailer evidence' },
+    { key: 'ai' as Mode, icon: <Zap size={13} />, label: 'AI QA Agent', desc: 'Describe a workflow; the agent explores and verifies it' },
     { key: 'browser' as Mode, icon: <Activity size={13} />, label: 'Browser QA', desc: 'Check URLs, browser errors, broken links & screenshots' },
     { key: 'traffic' as Mode, icon: <Activity size={13} />, label: 'Traffic → Script', desc: 'Upload logs/traces → AI generates realistic scripts' },
     { key: 'correlate' as Mode, icon: <Zap size={13} />, label: 'JMeter Correlator', desc: 'Auto-correlate dynamic values from JMX or HAR' },
@@ -105,7 +105,7 @@ export function ToolsPanel() {
     { key: 'optimize' as Mode, icon: <Shield size={13} />, label: 'JMX Optimizer', desc: 'Best practice review and quality scoring' },
   ];
 
-  if (mode === 'coupon') return (
+  if (mode === 'ai') return (
     <div>
       <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap' }}>
         {MODES.map(tab => (
@@ -116,7 +116,7 @@ export function ToolsPanel() {
           </button>
         ))}
       </div>
-      <CouponQAPanel />
+      <AIQAPanel />
     </div>
   );
 

@@ -12,11 +12,9 @@ API.interceptors.request.use(config => {
     config.headers['Authorization'] = `Bearer ${authToken}`;
   }
   const llm = getLLMConfig();
-  if (llm.apiKey) {
-    config.headers['X-LLM-Provider'] = llm.provider;
-    config.headers['X-LLM-Key'] = llm.apiKey;
-    config.headers['X-LLM-Model'] = llm.model;
-  }
+  config.headers['X-LLM-Provider'] = llm.provider;
+  config.headers['X-LLM-Model'] = llm.model;
+  if (llm.apiKey) config.headers['X-LLM-Key'] = llm.apiKey;
   return config;
 });
 
@@ -148,11 +146,14 @@ export const healthCheck = () => API.get('/api/health').then(r => r.data);
 export const runBrowserQA = (url: string, check_links = true) =>
   API.post('/api/browser-qa/run', { url, check_links }, { timeout: 300000 }).then(r => r.data);
 
-export const discoverCouponOffers = (category: 'fashion' | 'electronics') =>
-  API.get(`/api/coupon-qa/offers/${category}`, { timeout: 90000 }).then(r => r.data);
+export const startAIQARun = (scenario: string) =>
+  API.post('/api/ai-qa/runs', { scenario }, { timeout: 30000 }).then(r => r.data);
 
-export const runCouponQA = (category: 'fashion' | 'electronics', selected: { goid: string; product_query?: string }[], product_query: string) =>
-  API.post('/api/coupon-qa/run', { category, selected, product_query }, { timeout: 600000 }).then(r => r.data);
+export const getAIQARun = (runId: string) =>
+  API.get(`/api/ai-qa/runs/${runId}`, { timeout: 15000 }).then(r => r.data);
+
+export const resumeAIQARun = (runId: string, values: Record<string, string>) =>
+  API.post(`/api/ai-qa/runs/${runId}/resume`, { values }, { timeout: 15000 }).then(r => r.data);
 
 // ─── LLM Config Test ─────────────────────────────────────────────
 

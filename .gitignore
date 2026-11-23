@@ -1,8 +1,12 @@
 # Local browser QA evidence is generated per run and should stay on the machine.
+.env
+backend/.env
 backend/artifacts/browser-qa/
 backend/artifacts/coupon-qa/
+backend/artifacts/ai-qa/
 
 # Python runtime files
 __pycache__/
 *.py[cod]
 .venv/
+backend/.env.local

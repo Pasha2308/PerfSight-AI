@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Key, Check, AlertCircle, ChevronDown, ExternalLink, Cpu } from 'lucide-react';
 
-export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'openrouter' | 'groq' | 'deepseek' | 'mistral' | 'together' | 'xai' | 'nvidia' | 'cohere';
+export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'openrouter' | 'groq' | 'deepseek' | 'mistral' | 'together' | 'xai' | 'nvidia' | 'cohere' | 'ollama';
 
 export interface LLMConfig {
   provider: LLMProvider;
@@ -10,6 +10,19 @@ export interface LLMConfig {
 }
 
 const PROVIDERS = [
+  {
+    id: 'ollama' as LLMProvider,
+    name: 'Ollama (Local)',
+    logo: '💻',
+    models: [
+      { value: 'qwen2.5:1.5b', label: 'Qwen 2.5 1.5B (Local)' },
+      { value: 'llama3.2:1b', label: 'Llama 3.2 1B (Local)' },
+    ],
+    keyPlaceholder: 'Not required for local Ollama',
+    keyLink: '',
+    keyLinkLabel: '',
+    description: 'Runs on this computer through Ollama; no hosted model API usage charge.',
+  },
   {
     id: 'google' as LLMProvider,
     name: 'Google Gemini',
@@ -68,14 +81,14 @@ const PROVIDERS = [
     name: 'Groq',
     logo: '⚡',
     models: [
-      { value: 'llama3-70b-8192', label: 'Llama 3 70B' },
-      { value: 'llama3-8b-8192', label: 'Llama 3 8B' },
-      { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+      { value: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (fast, economical)' },
+      { value: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B (stronger reasoning)' },
+      { value: 'qwen/qwen3.8-27b', label: 'Qwen 3.8 27B (agentic, structured output)' },
     ],
     keyPlaceholder: 'gsk_...',
     keyLink: 'https://console.groq.com/keys',
     keyLinkLabel: 'Get key from Groq',
-    description: 'Ultra-fast inference for Llama and Mixtral.',
+    description: 'Fast hosted inference. Free-tier limits apply; paid usage may be billed by Groq.',
   },
   {
     id: 'deepseek' as LLMProvider,
@@ -181,7 +194,7 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   const handleProviderChange = (provider: LLMProvider) => {
     const p = PROVIDERS.find(x => x.id === provider)!;
-    setConfig(c => ({ ...c, provider, model: p.models[0].value }));
+    setConfig(c => ({ ...c, provider, model: p.models[0].value, apiKey: provider === 'ollama' ? 'ollama' : '' }));
     setTestResult(null);
   };
 
@@ -192,7 +205,7 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
   };
 
   const handleTestConnection = async () => {
-    if (!config.apiKey.trim()) return;
+    if (!config.apiKey.trim() && config.provider !== 'groq') return;
     setTesting(true);
     setTestResult(null);
     try {
@@ -329,20 +342,20 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
             </div>
           </div>
 
-          {/* API Key Input */}
-          <div style={{ marginBottom: 18 }}>
+          {/* Ollama uses a local sentinel token and never sends the model request to a hosted provider. */}
+          {config.provider !== 'ollama' && <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 API Key
               </span>
-              <a
+              {selectedProvider.keyLink && <a
                 href={selectedProvider.keyLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ fontSize: 11.5, color: 'var(--feuji-red)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
               >
                 {selectedProvider.keyLinkLabel} <ExternalLink size={10} />
-              </a>
+              </a>}
             </label>
             <div style={{ position: 'relative' }}>
               <Key size={14} color="var(--text-muted)" style={{
@@ -368,12 +381,18 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
               </button>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <AlertCircle size={10} /> Your key is stored locally in your browser only — never sent to our servers.
+              <AlertCircle size={10} /> Stored in this browser and sent to your local PerfSight backend for model requests. Hosted providers receive those prompts; Ollama stays on this device.
             </div>
-          </div>
+            {config.provider === 'groq' && !config.apiKey.trim() && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
+              With this field empty, the backend uses GROQ_API_KEY from the project .env file.
+            </div>}
+          </div>}
+          {config.provider === 'ollama' && <div style={{ marginBottom: 18, padding: 12, borderRadius: 8, background: 'var(--bg-secondary)', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.5 }}>
+            Start Ollama locally and pull the selected model before connecting. PerfSight sends prompts only to <code>http://127.0.0.1:11434</code>.
+          </div>}
 
           {/* Test Connection */}
-          {config.apiKey.trim() && (
+          {(config.apiKey.trim() || config.provider === 'groq') && (
             <div style={{ marginBottom: 18 }}>
               <button
                 onClick={handleTestConnection}
@@ -406,7 +425,7 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
             <div style={{ fontWeight: 600, color: 'var(--feuji-red)', marginBottom: 5, fontSize: 12 }}>
               How this works
             </div>
-            Your selected model and API key are sent with every request to the backend. The system will use your model for:
+            Your selected model receives the page summary and scenario for AI planning. Tester-entered passwords and form values are withheld from those prompts. Hosted providers may charge according to their pricing; Ollama runs locally.
             <ul style={{ marginTop: 6, paddingLeft: 16, lineHeight: 1.8 }}>
               <li>Scenario parsing and script generation</li>
               <li>Anomaly analysis and root cause detection</li>
