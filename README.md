@@ -179,7 +179,7 @@ Open your browser at `http://localhost:5173`.
 1. Open `http://localhost:5173` in your browser.
 2. In the sidebar, navigate to **Tools** → **AI QA Agent**.
 3. In the scenario box, enter your test prompt, for example:
-   > *Open this GrabOn offer detail https://www.grabon.in/coupon-codes/236192/ Follow its Levi’s retailer link and inspect the product/cart flow. If a login/signup or mobile-number prompt appears, pause and ask the tester for the required sign-in input. Do not enter personal information or OTPs automatically; do not order or pay. Capture screenshots and report exactly what is verified.*
+   > *Open this target website  Follow its Levi’s retailer link and inspect the product/cart flow. If a login/signup or mobile-number prompt appears, pause and ask the tester for the required sign-in input. Do not enter personal information or OTPs automatically; do not order or pay. Capture screenshots and report exactly what is verified.*
 4. Select provider **Groq** (or your preferred LLM) and click **Start AI QA Run**.
 5. Watch live progress: the agent streams step-by-step actions, screenshots, and key failovers in real time. If a login prompt is encountered, enter the requested input in the UI to resume.
 
