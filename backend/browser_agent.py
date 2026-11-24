@@ -87,18 +87,42 @@ class AgentRun:
 
     def public_report(self) -> dict[str, Any]:
         public_scenario = re.sub(r"https?://[^\s<>()\"']+", lambda match: _safe_url(match.group(0).rstrip(".,;:")), self.scenario)
+        screenshots = [
+            {"step": ev.get("step"), "action": ev.get("action"), "url": ev.get("url"), "screenshot": ev.get("screenshot")}
+            for ev in self.events if ev.get("screenshot")
+        ]
+        failover_count = sum(1 for ev in self.events if ev.get("action") == "provider_key_failover")
+        summary = self.result or ""
+        if not summary:
+            if self.status == "needs_input":
+                prompt_text = self.input_request.get("prompt") if self.input_request else "user sign-in details"
+                summary = f"Waiting for tester input. The retailer page requires user authentication or input ({prompt_text})."
+            elif self.status == "completed":
+                summary = "The QA agent successfully completed the scenario workflow."
+            elif self.status == "failed":
+                summary = f"The QA run stopped due to an error: {self.error or 'Workflow blocked'}"
+            elif self.status in {"running", "starting"}:
+                summary = f"In progress. Executed {len(self.events)} step(s) across target pages."
+
         return {
             "run_id": self.run_id,
             "scenario": _scrub_text(public_scenario),
             "provider": self.provider,
             "model": self.model,
             "status": self.status,
+            "summary": summary,
             "started_at": self.started_at,
             "current_url": _safe_url(self.current_url),
             "title": self.title,
             "result": self.result,
             "error": self.error,
             "input_request": self.input_request,
+            "screenshots": screenshots,
+            "metrics": {
+                "total_steps": len(self.events),
+                "screenshots_count": len(screenshots),
+                "failovers_count": failover_count,
+            },
             "events": list(self.events),
             "evidence": list(self.evidence),
         }
