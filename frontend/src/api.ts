@@ -12,9 +12,11 @@ API.interceptors.request.use(config => {
     config.headers['Authorization'] = `Bearer ${authToken}`;
   }
   const llm = getLLMConfig();
-  config.headers['X-LLM-Provider'] = llm.provider;
-  config.headers['X-LLM-Model'] = llm.model;
+  config.headers['X-LLM-Provider'] = llm.provider || 'groq';
+  config.headers['X-LLM-Model'] = llm.model || 'openai/gpt-oss-20b';
   if (llm.apiKey) config.headers['X-LLM-Key'] = llm.apiKey;
+  if (llm.groqKey2) config.headers['X-Groq-Key-2'] = llm.groqKey2;
+  if (llm.groqKey3) config.headers['X-Groq-Key-3'] = llm.groqKey3;
   return config;
 });
 

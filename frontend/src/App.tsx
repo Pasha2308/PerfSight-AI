@@ -251,10 +251,13 @@ export default function App() {
     reset();
   };
 
-  // Initialize API token on load
+  // Initialize API token on load & listen for settings open events
   useEffect(() => {
     if (token) setAuthToken(token);
-  }, []);
+    const handler = () => setSettingsOpen(true);
+    window.addEventListener('open-perfsight-settings', handler);
+    return () => window.removeEventListener('open-perfsight-settings', handler);
+  }, [token]);
 
   const isIdle = currentPhase === 'idle';
   const hasReport = !!report;
@@ -319,27 +322,38 @@ export default function App() {
               </span>
             </div>
           )}
-          {!isIdle && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
-            {userName ? `Hi, ${userName}` : 'Workspace'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>
+              {userName ? `Hi, ${userName}` : 'Workspace'}
+            </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSettingsOpen(true)}
+              style={{
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                border: '1.5px solid var(--feuji-red)',
+                borderRadius: 8,
+                padding: '6px 12px',
+                background: 'rgba(224,64,30,0.06)',
+                fontWeight: 600,
+                fontSize: 12.5,
+                cursor: 'pointer'
+              }}
+              title="Configure AI Models and API Keys"
+            >
+              <Settings size={15} color="var(--feuji-red)" /> <span style={{ marginLeft: 6, color: 'var(--feuji-red)' }}>AI Settings</span>
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleLogout}
+              style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+              title="Logout"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setSettingsOpen(true)}
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <Settings size={16} /> <span style={{ marginLeft: 4 }}>Settings</span>
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={handleLogout}
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
-          )}
         </div>
       </header>
 

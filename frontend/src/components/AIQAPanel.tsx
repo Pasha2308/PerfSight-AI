@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle, ExternalLink, Globe, KeyRound, LoaderCircle, Play, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ExternalLink, Globe, KeyRound, LoaderCircle, Play, ShieldCheck, Cpu, Settings } from 'lucide-react';
 import { getAIQARun, resumeAIQARun, startAIQARun } from '../api';
+import { getLLMConfig } from './SettingsDrawer';
 
 type InputField = { key: string; label: string; input_type: string };
 type Event = { step: number; at: string; action: string; message?: string; url?: string; title?: string; screenshot?: string | null; console_errors?: string[]; page_errors?: string[] };
@@ -64,13 +65,65 @@ export function AIQAPanel() {
       <ShieldCheck size={15} color="var(--accent-green)" style={{ flexShrink: 0, marginTop: 1 }} />
       Passwords and tester-entered values stay out of the model prompt, execution log, and screenshots. A run never places an order or submits payment. The selected model provider may have its own usage costs.
     </div>
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: '10px 14px',
+      marginBottom: 14,
+      borderRadius: 8,
+      border: '1px solid var(--border)',
+      background: 'var(--bg-secondary)',
+      flexWrap: 'wrap',
+      gap: 10,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+        <Cpu size={16} color="var(--feuji-red)" />
+        <span>
+          <strong>AI Provider:</strong> <span style={{ textTransform: 'uppercase', color: 'var(--feuji-red)', fontWeight: 700 }}>{getLLMConfig().provider}</span>
+          <span style={{ margin: '0 6px', color: 'var(--text-muted)' }}>|</span>
+          <strong>Model:</strong> <code>{getLLMConfig().model}</code>
+        </span>
+      </div>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => window.dispatchEvent(new CustomEvent('open-perfsight-settings'))}
+        style={{
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'var(--feuji-red)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '5px 12px',
+          border: '1.5px solid rgba(224,64,30,0.3)',
+          borderRadius: 7,
+          background: 'rgba(224,64,30,0.06)',
+          cursor: 'pointer',
+        }}
+      >
+        <Settings size={13} /> Configure AI Keys & Models
+      </button>
+    </div>
+
     <label htmlFor="ai-qa-scenario" style={{ display: 'block', marginBottom: 5, fontSize: 12, fontWeight: 600 }}>What should the tester do?</label>
     <textarea id="ai-qa-scenario" value={scenario} onChange={e => setScenario(e.target.value)} maxLength={5000} rows={5} disabled={!!active}
       placeholder="Describe the website and the workflow to verify…" style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.5 }} />
     <button className="btn btn-primary" onClick={start} disabled={loading || !!active || !scenario.trim()} style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10 }}>
       {loading || active ? <><LoaderCircle size={14} className="spinner" /> {run?.status === 'needs_input' ? 'Waiting for tester input…' : 'Running scenario…'}</> : <><Play size={14} /> Run AI QA scenario</>}
     </button>
-    {error && <div role="alert" style={{ marginTop: 12, color: 'var(--feuji-red)', fontSize: 12.5 }}>{error}</div>}
+    {error && <div role="alert" style={{ marginTop: 12, padding: '10px 14px', borderRadius: 7, background: 'rgba(224,64,30,0.08)', border: '1px solid var(--feuji-red)', color: 'var(--feuji-red)', fontSize: 12.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+      <span>{error}</span>
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={() => window.dispatchEvent(new CustomEvent('open-perfsight-settings'))}
+        style={{ fontSize: 11.5, background: 'var(--feuji-red)', color: 'white', border: 'none', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontWeight: 600 }}
+      >
+        Open AI Settings
+      </button>
+    </div>}
 
     {run?.input_request && <form onSubmit={resume} style={{ marginTop: 16, padding: 14, border: '1px solid var(--feuji-amber)', borderRadius: 8, background: 'rgba(242,141,29,.06)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: 13 }}><KeyRound size={15} color="var(--feuji-amber)" /> Tester input needed</div>

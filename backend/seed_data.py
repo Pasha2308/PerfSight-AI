@@ -16,19 +16,19 @@ async def seed_data():
     async with aiosqlite.connect(DB_PATH) as db:
         # Create a default user
         admin_id = "admin-1234-5678"
-        email = "judge@feuji.com"
+        email = "test@perfsight.com"
         
         # Check if user exists
         async with db.execute("SELECT id FROM users WHERE email = ?", (email,)) as cur:
             if await cur.fetchone():
                 print(f"User {email} already exists. Proceeding with seeding tests...")
             else:
-                pw = get_password_hash("password123")
+                pw = get_password_hash("test@123")
                 await db.execute(
                     "INSERT INTO users (id, email, hashed_password, name) VALUES (?, ?, ?, ?)",
-                    (admin_id, email, pw, "Feuji Judge")
+                    (admin_id, email, pw, "PerfSight Tester")
                 )
-                print(f"Created admin user: {email} / password123")
+                print(f"Created admin user: {email} / test@123")
         
         # Create a workspace
         workspace_id = "workspace-abc-def"

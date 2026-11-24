@@ -979,17 +979,36 @@ def _run_thread(run: AgentRun) -> None:
             run.condition.notify_all()
 
 
-def start_run(scenario: str, provider: str, api_key: str, model: str) -> dict[str, Any]:
+def start_run(
+    scenario: str,
+    provider: str = "",
+    api_key: str = "",
+    model: str = "",
+    groq_key_2: str = "",
+    groq_key_3: str = "",
+) -> dict[str, Any]:
     scenario = scenario.strip()
     if not scenario or len(scenario) > 5_000:
         raise HTTPException(status_code=422, detail="Enter a scenario between 1 and 5,000 characters.")
+    if not provider:
+        provider = "groq" if GROQ_API_KEYS else "google"
     if provider == "groq":
-        # A key in Settings is the primary. Backend env slots 2 and 3 remain
-        # available as backups; when Settings is blank, use all env slots.
-        backup_keys = [key for key in (GROQ_API_KEY_2, GROQ_API_KEY_3) if key]
-        keyring = ([api_key] + [key for key in backup_keys if key != api_key]) if api_key else list(GROQ_API_KEYS)
+        user_keys = [k.strip() for k in (api_key, groq_key_2, groq_key_3) if k and k.strip()]
+        if user_keys:
+            keyring = user_keys
+            # If fewer than 3 keys provided in Settings, append remaining backend env keys
+            for env_k in GROQ_API_KEYS:
+                if env_k and env_k not in keyring:
+                    keyring.append(env_k)
+        else:
+            keyring = list(GROQ_API_KEYS)
         api_key = keyring[0] if keyring else ""
         model = model or GROQ_MODEL_FAST
+    elif provider == "google":
+        from agents.llm_router import GEMINI_API_KEY, DEFAULT_MODEL_FAST
+        api_key = api_key or GEMINI_API_KEY
+        model = model or DEFAULT_MODEL_FAST
+        keyring = [api_key] if api_key else []
     else:
         keyring = [api_key] if api_key else []
     if provider not in SUPPORTED_PROVIDERS or not model or not keyring:

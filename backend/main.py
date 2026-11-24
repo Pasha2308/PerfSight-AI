@@ -492,9 +492,11 @@ async def ai_qa_start(
     x_llm_provider: str = Header(default=""),
     x_llm_key: str = Header(default=""),
     x_llm_model: str = Header(default=""),
+    x_groq_key_2: str = Header(default=""),
+    x_groq_key_3: str = Header(default=""),
 ):
     """Start a general scenario-driven browser run using the tester's configured model."""
-    return start_ai_qa_run(request.scenario, x_llm_provider, x_llm_key, x_llm_model)
+    return start_ai_qa_run(request.scenario, x_llm_provider, x_llm_key, x_llm_model, x_groq_key_2, x_groq_key_3)
 
 @app.get("/api/ai-qa/runs/{run_id}")
 async def ai_qa_status(run_id: str):

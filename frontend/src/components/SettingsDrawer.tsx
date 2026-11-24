@@ -6,6 +6,8 @@ export type LLMProvider = 'google' | 'openai' | 'anthropic' | 'openrouter' | 'gr
 export interface LLMConfig {
   provider: LLMProvider;
   apiKey: string;
+  groqKey2?: string;
+  groqKey3?: string;
   model: string;
 }
 
@@ -174,9 +176,18 @@ const STORAGE_KEY = 'perfsight_llm_config';
 export function getLLMConfig(): LLMConfig {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        provider: parsed.provider || 'groq',
+        apiKey: parsed.apiKey || '',
+        groqKey2: parsed.groqKey2 || '',
+        groqKey3: parsed.groqKey3 || '',
+        model: parsed.model || (parsed.provider === 'groq' ? 'openai/gpt-oss-20b' : 'gemini-2.5-flash'),
+      };
+    }
   } catch {}
-  return { provider: 'google', apiKey: '', model: 'gemini-2.5-flash' };
+  return { provider: 'groq', apiKey: '', groqKey2: '', groqKey3: '', model: 'openai/gpt-oss-20b' };
 }
 
 export function saveLLMConfig(config: LLMConfig) {
@@ -185,7 +196,7 @@ export function saveLLMConfig(config: LLMConfig) {
 
 export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [config, setConfig] = useState<LLMConfig>(getLLMConfig);
-  const [showKey, setShowKey] = useState<Partial<Record<LLMProvider, boolean>>>({});
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
@@ -194,7 +205,14 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
 
   const handleProviderChange = (provider: LLMProvider) => {
     const p = PROVIDERS.find(x => x.id === provider)!;
-    setConfig(c => ({ ...c, provider, model: p.models[0].value, apiKey: provider === 'ollama' ? 'ollama' : '' }));
+    setConfig(c => ({
+      ...c,
+      provider,
+      model: p.models[0].value,
+      apiKey: provider === 'ollama' ? 'ollama' : (c.provider === provider ? c.apiKey : ''),
+      groqKey2: provider === 'groq' ? c.groqKey2 || '' : undefined,
+      groqKey3: provider === 'groq' ? c.groqKey3 || '' : undefined,
+    }));
     setTestResult(null);
   };
 
@@ -205,7 +223,6 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
   };
 
   const handleTestConnection = async () => {
-    if (!config.apiKey.trim() && config.provider !== 'groq') return;
     setTesting(true);
     setTestResult(null);
     try {
@@ -216,6 +233,8 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
           'X-LLM-Provider': config.provider,
           'X-LLM-Key': config.apiKey,
           'X-LLM-Model': config.model,
+          'X-Groq-Key-2': config.groqKey2 || '',
+          'X-Groq-Key-3': config.groqKey3 || '',
         },
         body: JSON.stringify({ provider: config.provider, model: config.model }),
       });
@@ -342,8 +361,106 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
             </div>
           </div>
 
-          {/* Ollama uses a local sentinel token and never sends the model request to a hosted provider. */}
-          {config.provider !== 'ollama' && <div style={{ marginBottom: 18 }}>
+          {/* Groq 3-Key Failover Slots */}
+          {config.provider === 'groq' && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Groq Multi-Account API Keys (3 Slots)
+                </span>
+                <a
+                  href="https://console.groq.com/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 11.5, color: 'var(--feuji-red)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 3 }}
+                >
+                  Get keys from Groq Console <ExternalLink size={10} />
+                </a>
+              </div>
+
+              {/* Slot 1 */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Slot 1 — Primary Account Key
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Key size={14} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    className="input"
+                    type={showKey['groq1'] ? 'text' : 'password'}
+                    placeholder="gsk_... (Primary Account)"
+                    value={config.apiKey}
+                    onChange={e => { setConfig(c => ({ ...c, apiKey: e.target.value })); setTestResult(null); }}
+                    style={{ paddingLeft: 36, paddingRight: 75, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(s => ({ ...s, groq1: !s.groq1 }))}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}
+                  >
+                    {showKey['groq1'] ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Slot 2 */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Slot 2 — Backup Account Key (Auto-Failover)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Key size={14} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    className="input"
+                    type={showKey['groq2'] ? 'text' : 'password'}
+                    placeholder="gsk_... (Backup Account 2)"
+                    value={config.groqKey2 || ''}
+                    onChange={e => { setConfig(c => ({ ...c, groqKey2: e.target.value })); setTestResult(null); }}
+                    style={{ paddingLeft: 36, paddingRight: 75, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(s => ({ ...s, groq2: !s.groq2 }))}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}
+                  >
+                    {showKey['groq2'] ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Slot 3 */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                  Slot 3 — Backup Account Key (Auto-Failover)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Key size={14} color="var(--text-muted)" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    className="input"
+                    type={showKey['groq3'] ? 'text' : 'password'}
+                    placeholder="gsk_... (Backup Account 3)"
+                    value={config.groqKey3 || ''}
+                    onChange={e => { setConfig(c => ({ ...c, groqKey3: e.target.value })); setTestResult(null); }}
+                    style={{ paddingLeft: 36, paddingRight: 75, fontFamily: 'var(--font-mono)', fontSize: 12.5 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(s => ({ ...s, groq3: !s.groq3 }))}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}
+                  >
+                    {showKey['groq3'] ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.5, background: 'var(--bg-secondary)', padding: '9px 12px', borderRadius: 7, border: '1px solid var(--border)' }}>
+                ℹ️ When Slot 1 reaches token or rate limits (HTTP 429), PerfSight AI automatically rotates to Slot 2, then Slot 3 without stopping the QA run. If slots are left blank here, the backend automatically uses <code>GROQ_API_KEY</code>, <code>GROQ_API_KEY_2</code>, and <code>GROQ_API_KEY_3</code> from your backend <code>.env</code> file.
+              </div>
+            </div>
+          )}
+
+          {/* Standard Single API Key for Other Providers */}
+          {config.provider !== 'ollama' && config.provider !== 'groq' && <div style={{ marginBottom: 18 }}>
             <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                 API Key
@@ -370,6 +487,7 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
                 style={{ paddingLeft: 36, paddingRight: 80, fontFamily: 'var(--font-mono)', fontSize: 13 }}
               />
               <button
+                type="button"
                 onClick={() => setShowKey(s => ({ ...s, [config.provider]: !s[config.provider] }))}
                 style={{
                   position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
@@ -381,11 +499,8 @@ export const SettingsDrawer: React.FC<{ onClose: () => void }> = ({ onClose }) =
               </button>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <AlertCircle size={10} /> Stored in this browser and sent to your local PerfSight backend for model requests. Hosted providers receive those prompts; Ollama stays on this device.
+              <AlertCircle size={10} /> Stored in this browser and sent to your local PerfSight backend for model requests.
             </div>
-            {config.provider === 'groq' && !config.apiKey.trim() && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 5 }}>
-              With this field empty, the backend uses GROQ_API_KEY from the project .env file.
-            </div>}
           </div>}
           {config.provider === 'ollama' && <div style={{ marginBottom: 18, padding: 12, borderRadius: 8, background: 'var(--bg-secondary)', color: 'var(--text-muted)', fontSize: 12, lineHeight: 1.5 }}>
             Start Ollama locally and pull the selected model before connecting. PerfSight sends prompts only to <code>http://127.0.0.1:11434</code>.
